@@ -421,3 +421,62 @@ void fem::petsc::set_bc(
   VecRestoreArray(b, &array);
 }
 //-----------------------------------------------------------------------------
+void fem::petsc::set_bc(
+    Mat A, const dolfinx::fem::FunctionSpace& V,
+    const std::vector<std::shared_ptr<const fem::DirichletBC<PetscScalar>>>&
+        bcs,
+    double diagonal)
+{
+  PetscErrorCode ierr;
+  const PetscInt nrows = 1;
+  std::vector<PetscScalar> zeros;
+  std::vector<PetscInt> columns;
+  for (auto bc : bcs)
+  {
+    auto [rows, num_local] = bc->dof_indices();
+    PetscInt loc_start;
+    PetscInt loc_end;
+    std::vector<PetscScalar> zeros;
+    ierr = MatGetOwnershipRange(A, &loc_start, &loc_end);
+    if (ierr != 0)
+      la::petsc::error(ierr, __FILE__, "MatGetOwnerShipRange");
+    std::cout << num_local << "\n";
+    for (std::int32_t i = 0; i < num_local; ++i)
+    {
+      // Get number of columns and columns (global index) on
+      // the current row
+      PetscInt ncols = 0;
+      const PetscScalar* vals = nullptr;
+      const PetscInt* cols = nullptr;
+      const PetscInt glob_row = loc_start + (PetscInt)rows[i];
+      ierr = MatGetRow(A, glob_row, &ncols, &cols, &vals);
+      if (ierr != 0)
+        la::petsc::error(ierr, __FILE__, "MatGetRow");
+
+      // Fill row with zeros
+      PetscScalar array = 0;
+      zeros.resize(ncols);
+      std::fill(zeros.begin(), zeros.end(), (PetscScalar)0.);
+      ierr = MatSetValues(A, nrows, &glob_row, ncols, cols, zeros.data(),
+                          INSERT_VALUES);
+      if (ierr != 0)
+        la::petsc::error(ierr, __FILE__, "MatSetValues");
+      ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
+      if (ierr != 0)
+        la::petsc::error(ierr, __FILE__, "MatAssemblyBegin");
+      ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+      if (ierr != 0)
+        la::petsc::error(ierr, __FILE__, "MatAssemblyEnd");
+
+      std::span<PetscScalar> array_span(&array, ncols);
+      ierr = MatRestoreRow(A, glob_row, &ncols, &cols, &vals);
+      if (ierr != 0)
+        la::petsc::error(ierr, __FILE__, "MatRestoreRow");
+    }
+    std::cout << "endloop\n";
+  }
+  fem::set_diagonal(la::petsc::Matrix::set_fn(A, INSERT_VALUES), V, bcs,
+                    diagonal);
+}
+
+//-----------------------------------------------------------------------------

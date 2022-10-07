@@ -733,6 +733,14 @@ void petsc_module(py::module& m)
         return A;
       },
       py::return_value_policy::take_ownership, py::arg("V0"), py::arg("V1"));
+
+  m.def(
+      "set_bc",
+      [](Mat A, const dolfinx::fem::FunctionSpace& V,
+         const std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar>>>& bcs,
+         double diagonal) { dolfinx::fem::petsc::set_bc(A, V, bcs, diagonal); },
+      py::arg("A"), py::arg("V"), py::arg("bcs"), py::arg("diagonal") = 1.0);
 }
 
 template <typename T>

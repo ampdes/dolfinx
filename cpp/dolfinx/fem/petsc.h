@@ -165,5 +165,16 @@ void set_bc(
     Vec b,
     const std::vector<std::shared_ptr<const DirichletBC<PetscScalar>>>& bcs,
     const Vec x0, double scale = 1.0);
+
+/// @brief Apply Dirichlet conditions to matrix my setting each owned row with a
+/// constrained dof to a scaled identity row
+/// @param[in, out] A The PETSc matrix
+/// @param[in] V The function space of the trial function
+/// @param[in] bcs The Dirichlet boundary conditions
+/// @param[in] diagonal Value to insert on the diagonal
+void set_bc(
+    Mat A, const dolfinx::fem::FunctionSpace& V,
+    const std::vector<std::shared_ptr<const DirichletBC<PetscScalar>>>& bcs,
+    double diagonal = 1.0);
 } // namespace petsc
 } // namespace dolfinx::fem

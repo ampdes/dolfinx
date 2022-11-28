@@ -132,6 +132,7 @@ la::MatrixCSR<double> create_operator(MPI_Comm comm)
 {
   la::MatrixCSR<double> A0 = create_operator(MPI_COMM_SELF);
   la::MatrixCSR<double> A1 = create_operator(MPI_COMM_WORLD);
+  std::cout << A0.norm_squared() << " = " << A1.norm_squared() << "\n";
   CHECK(A1.norm_squared() == Approx(A0.norm_squared()).epsilon(1e-8));
 }
 
@@ -225,6 +226,6 @@ void test_matrix()
 TEST_CASE("Linear Algebra CSR Matrix", "[la_matrix]")
 {
   CHECK_NOTHROW(test_matrix());
-  // CHECK_NOTHROW(test_matrix_apply());
-  // CHECK_NOTHROW(test_matrix_norm());
+  CHECK_NOTHROW(test_matrix_apply());
+  CHECK_NOTHROW(test_matrix_norm());
 }

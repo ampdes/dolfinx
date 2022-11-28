@@ -120,7 +120,7 @@ jobs:
       - name: Run C++ unit tests (MPI)
         run: |
           cd build/test
-          mpiexec -np 2 ctest -V --output-on-failure -R unittests
+          mpiexec --mca btl ^vader -np 2 ctest -V --output-on-failure -R unittests
       - name: Build and run C++ regression tests (serial and MPI (np=2))
         run: |
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Developer -B build/demo/ -S build/demo/

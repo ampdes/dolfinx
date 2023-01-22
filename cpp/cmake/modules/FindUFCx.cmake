@@ -36,6 +36,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #=============================================================================
 
+set (Python3_EXECUTABLE python3.10)
+
 message(
   STATUS
     "Asking Python module FFCx for location of UFC... (Python executable: ${Python3_EXECUTABLE})"

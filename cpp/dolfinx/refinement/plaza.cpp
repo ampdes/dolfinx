@@ -95,9 +95,9 @@ void enforce_rules(MPI_Comm neighbor_comm,
 }
 //-----------------------------------------------------------------------------
 // 2D version of subdivision allowing for uniform subdivision (flag)
-std::vector<std::int32_t>
-get_triangles(const std::vector<std::int64_t>& indices,
-              const std::int32_t longest_edge, bool uniform)
+void get_triangles(std::vector<std::int32_t>& tri_set,
+                   const std::vector<std::int64_t>& indices,
+                   const std::int32_t longest_edge, bool uniform)
 {
   // v0 and v1 are at ends of longest_edge (e2) opposite vertex has same
   // index as longest_edge
@@ -113,10 +113,10 @@ get_triangles(const std::vector<std::int64_t>& indices,
 
   // If all edges marked, consider uniform refinement
   if (uniform and indices[e0] >= 0 and indices[e1] >= 0)
-    return {e0, e1, v2, e1, e2, v0, e2, e0, v1, e2, e1, e0};
+    tri_set.assign({e0, e1, v2, e1, e2, v0, e2, e0, v1, e2, e1, e0});
 
   // Break each half of triangle into one or two sub-triangles
-  std::vector<std::int32_t> tri_set;
+  tri_set.clear();
   if (indices[e0] >= 0)
     tri_set = {e2, v2, e0, e2, e0, v1};
   else
@@ -129,14 +129,12 @@ get_triangles(const std::vector<std::int64_t>& indices,
   }
   else
     tri_set.insert(tri_set.end(), {e2, v2, v0});
-
-  return tri_set;
 }
 //-----------------------------------------------------------------------------
 // 3D version of subdivision
-std::vector<std::int32_t>
-get_tetrahedra(const std::vector<std::int64_t>& indices,
-               const std::vector<std::int32_t>& longest_edge)
+void get_tetrahedra(std::vector<std::int32_t>& tet_set,
+                    const std::vector<std::int64_t>& indices,
+                    const std::vector<std::int32_t>& longest_edge)
 {
   // Connectivity matrix for ten possible points (4 vertices + 6 edge
   // midpoints) ordered {v0, v1, v2, v3, e0, e1, e2, e3, e4, e5} Only need
@@ -208,7 +206,8 @@ get_tetrahedra(const std::vector<std::int64_t>& indices,
   }
 
   // Iterate through all possible new vertices
-  std::vector<std::int32_t> facet_set, tet_set;
+  std::vector<std::int32_t> facet_set;
+  tet_set.clear();
   for (std::int32_t i = 0; i < 10; ++i)
   {
     for (std::int32_t j = i + 1; j < 10; ++j)
@@ -230,8 +229,6 @@ get_tetrahedra(const std::vector<std::int64_t>& indices,
       }
     }
   }
-
-  return tet_set;
 }
 //-----------------------------------------------------------------------------
 /// Get the subdivision of an original simplex into smaller simplices,
@@ -247,20 +244,20 @@ get_tetrahedra(const std::vector<std::int64_t>& indices,
 /// @param[in] uniform Make a "uniform" subdivision with all triangles
 ///   being similar shape
 /// @return
-std::vector<std::int32_t>
-get_simplices(const std::vector<std::int64_t>& indices,
-              const std::vector<std::int32_t>& longest_edge, std::int32_t tdim,
-              bool uniform)
+void get_simplices(std::vector<std::int32_t>& simplex_set,
+                   const std::vector<std::int64_t>& indices,
+                   const std::vector<std::int32_t>& longest_edge,
+                   std::int32_t tdim, bool uniform)
 {
   if (tdim == 2)
   {
     assert(longest_edge.size() == 1);
-    return get_triangles(indices, longest_edge[0], uniform);
+    get_triangles(simplex_set, indices, longest_edge[0], uniform);
   }
   else if (tdim == 3)
   {
     assert(longest_edge.size() == 4);
-    return get_tetrahedra(indices, longest_edge);
+    get_tetrahedra(simplex_set, indices, longest_edge);
   }
   else
     throw std::runtime_error("Topological dimension not supported");
@@ -568,7 +565,7 @@ compute_refinement(MPI_Comm neighbor_comm,
       const bool uniform = (tdim == 2) ? edge_ratio_ok[c] : false;
 
       // FIXME: this has an expensive dynamic memory allocation
-      simplex_set = get_simplices(indices, longest_edge, tdim, uniform);
+      get_simplices(simplex_set, indices, longest_edge, tdim, uniform);
 
       // Save parent index
       const std::int32_t ncells = simplex_set.size() / num_cell_vertices;

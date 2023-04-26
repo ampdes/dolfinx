@@ -262,9 +262,9 @@ public:
 
     const std::array<std::size_t, 4> phi_shape
         = cmap.tabulate_shape(0, Xshape[0]);
-    std::vector<E> phi_b(
+    std::vector<T> phi_b(
         std::reduce(phi_shape.begin(), phi_shape.end(), 1, std::multiplies{}));
-    mdspan_t<const E, 4> phi_full(phi_b.data(), phi_shape);
+    mdspan_t<const T, 4> phi_full(phi_b.data(), phi_shape);
     cmap.tabulate(0, X, Xshape, phi_b);
     auto phi = stdex::submdspan(phi_full, 0, stdex::full_extent,
                                 stdex::full_extent, 0);

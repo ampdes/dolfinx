@@ -111,7 +111,8 @@ la::MatrixCSR<double> create_operator(MPI_Comm comm)
       mesh::create_box(comm, {{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}}}, {12, 12, 12},
                        mesh::CellType::tetrahedron, part));
   auto V = std::make_shared<fem::FunctionSpace<double>>(
-      fem::create_functionspace(functionspace_form_poisson_a, "u", mesh));
+      fem::create_functionspace<double>(functionspace_form_poisson_a, "u",
+                                        mesh));
 
   // Prepare and set Constants for the bilinear form
   auto kappa = std::make_shared<fem::Constant<double>>(2.0);
@@ -144,7 +145,8 @@ la::MatrixCSR<double> create_operator(MPI_Comm comm)
                        mesh::CellType::tetrahedron, part));
 
   auto V = std::make_shared<fem::FunctionSpace<double>>(
-      fem::create_functionspace(functionspace_form_poisson_a, "u", mesh));
+      fem::create_functionspace<double>(functionspace_form_poisson_a, "u",
+                                        mesh));
 
   // Prepare and set Constants for the bilinear form
   auto kappa = std::make_shared<fem::Constant<double>>(2.0);

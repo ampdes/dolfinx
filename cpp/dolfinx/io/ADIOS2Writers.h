@@ -1027,13 +1027,13 @@ private:
 template <typename U, typename T>
 VTXWriter(MPI_Comm comm, U filename, T mesh)
     -> VTXWriter<typename std::remove_cvref<
-        typename T::element_type>::type::geometry_type::value_type>;
+        typename T::element_type>::type::geometry_type::coordinate_value_type>;
 
 /// Type deduction
 template <typename U, typename T>
 FidesWriter(MPI_Comm comm, U filename, T mesh)
     -> FidesWriter<typename std::remove_cvref<
-        typename T::element_type>::type::geometry_type::value_type>;
+        typename T::element_type>::type::geometry_type::coordinate_value_type>;
 
 } // namespace dolfinx::io
 

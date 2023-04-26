@@ -22,6 +22,7 @@ add_custom_command(
 set(TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/poisson.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/fem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/matrix.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/io.cpp

@@ -651,16 +651,16 @@ Form<T, U> create_form(
 /// @param[in] reorder_fn The graph reordering function to call on the
 /// dofmap. If `nullptr`, the default re-ordering is used.
 /// @return The created function space
-template <std::floating_point T>
-FunctionSpace<T>
+template <std::floating_point E, std::floating_point T = E>
+FunctionSpace<E, T>
 create_functionspace(std::shared_ptr<mesh::Mesh<T>> mesh,
-                     const basix::FiniteElement<T>& e, int bs,
+                     const basix::FiniteElement<E>& e, int bs,
                      const std::function<std::vector<int>(
                          const graph::AdjacencyList<std::int32_t>&)>& reorder_fn
                      = nullptr)
 {
   // Create a DOLFINx element
-  auto _e = std::make_shared<FiniteElement<T>>(e, bs);
+  auto _e = std::make_shared<FiniteElement<E>>(e, bs);
   assert(_e);
 
   // Create UFC subdofmaps and compute offset
@@ -688,7 +688,7 @@ create_functionspace(std::shared_ptr<mesh::Mesh<T>> mesh,
   assert(mesh->topology());
   auto dofmap = std::make_shared<const DofMap>(create_dofmap(
       mesh->comm(), layout, *mesh->topology(), unpermute_dofs, reorder_fn));
-  return FunctionSpace(mesh, _e, dofmap);
+  return FunctionSpace<E, T>(mesh, _e, dofmap);
 }
 
 /// @brief Create a FunctionSpace from UFC data.
@@ -701,8 +701,8 @@ create_functionspace(std::shared_ptr<mesh::Mesh<T>> mesh,
 /// @param[in] reorder_fn Graph reordering function to call on the
 /// dofmap. If `nullptr`, the default re-ordering is used.
 /// @return The created function space.
-template <std::floating_point T>
-FunctionSpace<T>
+template <std::floating_point E, std::floating_point T = E>
+FunctionSpace<E, T>
 create_functionspace(ufcx_function_space* (*fptr)(const char*),
                      const std::string& function_name,
                      std::shared_ptr<mesh::Mesh<T>> mesh,
@@ -735,7 +735,7 @@ create_functionspace(ufcx_function_space* (*fptr)(const char*),
     throw std::runtime_error("UFL mesh and CoordinateElement do not match.");
   }
 
-  auto element = std::make_shared<FiniteElement<T>>(*ufcx_element);
+  auto element = std::make_shared<FiniteElement<E>>(*ufcx_element);
   assert(element);
   ufcx_dofmap* ufcx_map = space->dofmap;
   assert(ufcx_map);
@@ -747,10 +747,10 @@ create_functionspace(ufcx_function_space* (*fptr)(const char*),
       unpermute_dofs = nullptr;
   if (element->needs_dof_permutations())
     unpermute_dofs = element->get_dof_permutation_function(true, true);
-  return FunctionSpace(mesh, element,
-                       std::make_shared<DofMap>(create_dofmap(
-                           mesh->comm(), layout, *mesh->topology(),
-                           unpermute_dofs, reorder_fn)));
+  return FunctionSpace<E, T>(mesh, element,
+                             std::make_shared<DofMap>(create_dofmap(
+                                 mesh->comm(), layout, *mesh->topology(),
+                                 unpermute_dofs, reorder_fn)));
 }
 
 /// @private
@@ -814,13 +814,12 @@ void pack(std::span<T> coeffs, std::int32_t cell, int bs, std::span<const T> v,
 /// @private
 /// @brief  Concepts for function that returns cell index
 template <typename F>
-concept FetchCells
-    = requires(F&& f, std::span<const std::int32_t> v) {
-        requires std::invocable<F, std::span<const std::int32_t>>;
-        {
-          f(v)
-          } -> std::convertible_to<std::int32_t>;
-      };
+concept FetchCells = requires(F&& f, std::span<const std::int32_t> v) {
+  requires std::invocable<F, std::span<const std::int32_t>>;
+  {
+    f(v)
+  } -> std::convertible_to<std::int32_t>;
+};
 
 /// @brief Pack a single coefficient for a set of active entities.
 ///

@@ -33,7 +33,7 @@ class Geometry
 {
 public:
   /// @brief Value type
-  using value_type = T;
+  using coordinate_value_type = T;
 
   /// @brief Constructor of object that holds mesh geometry data.
   ///

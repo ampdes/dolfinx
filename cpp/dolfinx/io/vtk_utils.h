@@ -27,7 +27,7 @@ namespace dolfinx
 {
 namespace fem
 {
-template <std::floating_point T>
+template <std::floating_point E, std::floating_point T>
 class FunctionSpace;
 }
 

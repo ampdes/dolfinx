@@ -26,6 +26,8 @@ template <std::floating_point T>
 class FiniteElement
 {
 public:
+  using value_type = T;
+
   /// Create finite element from UFC finite element
   /// @param[in] e UFC finite element
   explicit FiniteElement(const ufcx_finite_element& e);

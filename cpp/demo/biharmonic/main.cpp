@@ -161,7 +161,8 @@ int main(int argc, char* argv[])
 
     // Create function space
     auto V = std::make_shared<fem::FunctionSpace<double>>(
-        fem::create_functionspace(functionspace_form_biharmonic_a, "u", mesh));
+        fem::create_functionspace<double>(functionspace_form_biharmonic_a, "u",
+                                          mesh));
 
     // The source function ::math:`f` and the penalty term
     // ::math:`\alpha` are declared:

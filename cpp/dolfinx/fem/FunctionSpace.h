@@ -28,16 +28,25 @@ namespace dolfinx::fem
 /// @brief This class represents a finite element function space defined
 /// by a mesh, a finite element, and a local-to-global map of the
 /// degrees of freedom (dofmap).
-template <std::floating_point T>
+/// @tparam T Mesh geometry scalar type
+template <std::floating_point E, std::floating_point T = E>
 class FunctionSpace
 {
+private:
+  template <typename X, std::size_t D>
+  using mdspan_t
+      = std::experimental::mdspan<X,
+                                  std::experimental::dextents<std::size_t, D>>;
+
 public:
+  using mesh_type = mesh::Mesh<T>;
+
   /// @brief Create function space for given mesh, element and dofmap.
   /// @param[in] mesh The mesh
   /// @param[in] element The element
   /// @param[in] dofmap The dofmap
   FunctionSpace(std::shared_ptr<const mesh::Mesh<T>> mesh,
-                std::shared_ptr<const FiniteElement<T>> element,
+                std::shared_ptr<const FiniteElement<E>> element,
                 std::shared_ptr<const DofMap> dofmap)
       : _mesh(mesh), _element(element), _dofmap(dofmap),
         _id(boost::uuids::random_generator()()), _root_space_id(_id)
@@ -63,7 +72,8 @@ public:
   /// Extract subspace for component
   /// @param[in] component The subspace component
   /// @return The subspace
-  std::shared_ptr<FunctionSpace<T>> sub(const std::vector<int>& component) const
+  std::shared_ptr<FunctionSpace<E, T>>
+  sub(const std::vector<int>& component) const
   {
     assert(_mesh);
     assert(_element);
@@ -84,7 +94,8 @@ public:
         = std::make_shared<DofMap>(_dofmap->extract_sub_dofmap(component));
 
     // Create new sub space
-    auto sub_space = std::make_shared<FunctionSpace<T>>(_mesh, element, dofmap);
+    auto sub_space
+        = std::make_shared<FunctionSpace<E, T>>(_mesh, element, dofmap);
 
     // Set root space id and component w.r.t. root
     sub_space->_root_space_id = _root_space_id;
@@ -136,7 +147,7 @@ public:
   /// Collapse a subspace and return a new function space and a map from
   /// new to old dofs
   /// @return The new function space and a map from new to old dofs
-  std::pair<FunctionSpace<T>, std::vector<std::int32_t>> collapse() const
+  std::pair<FunctionSpace<E, T>, std::vector<std::int32_t>> collapse() const
   {
     if (_component.empty())
       throw std::runtime_error("Function space is not a subspace");
@@ -226,16 +237,12 @@ public:
     const std::size_t shape_c1 = transpose ? num_dofs : 3;
     std::vector<T> coords(shape_c0 * shape_c1, 0);
 
-    namespace stdex = std::experimental;
-    using mdspan2_t = stdex::mdspan<T, stdex::dextents<std::size_t, 2>>;
-    using cmdspan4_t = stdex::mdspan<const T, stdex::dextents<std::size_t, 4>>;
-
     // Loop over cells and tabulate dofs
     std::vector<T> x_b(scalar_dofs * gdim);
-    mdspan2_t x(x_b.data(), scalar_dofs, gdim);
+    mdspan_t<T, 2> x(x_b.data(), scalar_dofs, gdim);
 
     std::vector<T> coordinate_dofs_b(num_dofs_g * gdim);
-    mdspan2_t coordinate_dofs(coordinate_dofs_b.data(), num_dofs_g, gdim);
+    mdspan_t<T, 2> coordinate_dofs(coordinate_dofs_b.data(), num_dofs_g, gdim);
 
     auto map = _mesh->topology()->index_map(tdim);
     assert(map);
@@ -251,11 +258,13 @@ public:
     auto apply_dof_transformation
         = _element->template get_dof_transformation_function<T>();
 
+    namespace stdex = std::experimental;
+
     const std::array<std::size_t, 4> phi_shape
         = cmap.tabulate_shape(0, Xshape[0]);
-    std::vector<T> phi_b(
+    std::vector<E> phi_b(
         std::reduce(phi_shape.begin(), phi_shape.end(), 1, std::multiplies{}));
-    cmdspan4_t phi_full(phi_b.data(), phi_shape);
+    mdspan_t<const E, 4> phi_full(phi_b.data(), phi_shape);
     cmap.tabulate(0, X, Xshape, phi_b);
     auto phi = stdex::submdspan(phi_full, 0, stdex::full_extent,
                                 stdex::full_extent, 0);
@@ -298,7 +307,7 @@ public:
   std::shared_ptr<const mesh::Mesh<T>> mesh() const { return _mesh; }
 
   /// The finite element
-  std::shared_ptr<const FiniteElement<T>> element() const { return _element; }
+  std::shared_ptr<const FiniteElement<E>> element() const { return _element; }
 
   /// The dofmap
   std::shared_ptr<const DofMap> dofmap() const { return _dofmap; }
@@ -308,7 +317,7 @@ private:
   std::shared_ptr<const mesh::Mesh<T>> _mesh;
 
   // The finite element
-  std::shared_ptr<const FiniteElement<T>> _element;
+  std::shared_ptr<const FiniteElement<E>> _element;
 
   // The dofmap
   std::shared_ptr<const DofMap> _dofmap;
@@ -333,11 +342,12 @@ private:
 ///
 /// @param[in] V Vector function spaces for (0) each row block and (1)
 /// each column block
-template <typename T>
+template <std::floating_point E, std::floating_point T = E>
 std::array<std::vector<std::shared_ptr<const FunctionSpace<T>>>, 2>
 common_function_spaces(
     const std::vector<
-        std::vector<std::array<std::shared_ptr<const FunctionSpace<T>>, 2>>>& V)
+        std::vector<std::array<std::shared_ptr<const FunctionSpace<E, T>>, 2>>>&
+        V)
 {
   assert(!V.empty());
   std::vector<std::shared_ptr<const FunctionSpace<T>>> spaces0(V.size(),
@@ -386,7 +396,9 @@ common_function_spaces(
 /// Type deduction
 template <typename U, typename V, typename W>
 FunctionSpace(U mesh, V element, W dofmap)
-    -> FunctionSpace<typename std::remove_cvref<
-        typename U::element_type>::type::geometry_type::value_type>;
+    -> FunctionSpace<typename std::remove_cvref<typename V::value_type>::type::
+                         geometry_type::value_type,
+                     typename std::remove_cvref<typename U::element_type>::
+                         type::geometry_type::value_type>;
 
 } // namespace dolfinx::fem

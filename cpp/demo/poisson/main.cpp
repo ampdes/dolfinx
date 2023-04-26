@@ -126,7 +126,8 @@ int main(int argc, char* argv[])
                                {32, 16}, mesh::CellType::triangle, part));
 
     auto V = std::make_shared<fem::FunctionSpace<double>>(
-        fem::create_functionspace(functionspace_form_poisson_a, "u", mesh));
+        fem::create_functionspace<double>(functionspace_form_poisson_a, "u",
+                                          mesh));
 
     // Next, we define the variational formulation by initializing the
     // bilinear and linear forms (:math:`a`, :math:`L`) using the previously

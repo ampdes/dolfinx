@@ -128,7 +128,7 @@ int main(int argc, char* argv[])
         comm, {{{0.0, 0.0}, {1.0, 1.0}}}, {10, 10}, mesh::CellType::triangle,
         mesh::create_cell_partitioner(mesh::GhostMode::none)));
     auto V = std::make_shared<fem::FunctionSpace<U>>(
-        fem::create_functionspace(functionspace_form_poisson_M, "ui", mesh));
+        fem::create_functionspace<U>(functionspace_form_poisson_M, "ui", mesh));
 
     // Prepare and set Constants for the bilinear form
     auto f = std::make_shared<fem::Constant<T>>(-6.0);

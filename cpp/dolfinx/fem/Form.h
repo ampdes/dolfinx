@@ -25,7 +25,7 @@ namespace dolfinx::fem
 
 template <typename T>
 class Constant;
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point V>
 class Function;
 
 /// @brief Type of integral
@@ -83,18 +83,20 @@ public:
   /// @param[in] mesh Mesh of the domain. This is required when there
   /// are no argument functions from which the mesh can be extracted,
   /// e.g. for functionals.
-  Form(const std::vector<std::shared_ptr<const FunctionSpace<U>>>& V,
-       const std::map<IntegralType,
-                      std::vector<std::tuple<
-                          int,
-                          std::function<void(T*, const T*, const T*,
-                                             const scalar_value_type_t<T>*,
-                                             const int*, const std::uint8_t*)>,
-                          std::vector<std::int32_t>>>>& integrals,
-       const std::vector<std::shared_ptr<const Function<T, U>>>& coefficients,
-       const std::vector<std::shared_ptr<const Constant<T>>>& constants,
-       bool needs_facet_permutations,
-       std::shared_ptr<const mesh::Mesh<U>> mesh = nullptr)
+
+  Form(
+      const std::vector<std::shared_ptr<const FunctionSpace<U>>>& V,
+      const std::map<IntegralType,
+                     std::vector<std::tuple<
+                         int,
+                         std::function<void(T*, const T*, const T*,
+                                            const scalar_value_type_t<T>*,
+                                            const int*, const std::uint8_t*)>,
+                         std::vector<std::int32_t>>>>& integrals,
+      const std::vector<std::shared_ptr<const Function<T, U, U>>>& coefficients,
+      const std::vector<std::shared_ptr<const Constant<T>>>& constants,
+      bool needs_facet_permutations,
+      std::shared_ptr<const mesh::Mesh<U>> mesh = nullptr)
       : _function_spaces(V), _coefficients(coefficients), _constants(constants),
         _mesh(mesh), _needs_facet_permutations(needs_facet_permutations)
   {
@@ -224,7 +226,8 @@ public:
   }
 
   /// Access coefficients
-  const std::vector<std::shared_ptr<const Function<T, U>>>& coefficients() const
+  const std::vector<std::shared_ptr<const Function<T, U, U>>>&
+  coefficients() const
   {
     return _coefficients;
   }
@@ -264,7 +267,7 @@ private:
   std::vector<std::shared_ptr<const FunctionSpace<U>>> _function_spaces;
 
   // Form coefficients
-  std::vector<std::shared_ptr<const Function<T, U>>> _coefficients;
+  std::vector<std::shared_ptr<const Function<T, U, U>>> _coefficients;
 
   // Constants associated with the Form
   std::vector<std::shared_ptr<const Constant<T>>> _constants;

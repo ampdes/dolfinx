@@ -37,10 +37,9 @@ void test_function_space()
       basix::element::dpc_variant::unset, false);
 
   auto V = std::make_shared<fem::FunctionSpace<E, T>>(
-      fem::create_functionspace<E, T>(mesh, e, 1));
+      fem::create_functionspace(mesh, e, 1));
 
   auto x = V->tabulate_dof_coordinates(false);
-
 }
 
 } // namespace

@@ -39,7 +39,7 @@ void interpolate_scalar(std::shared_ptr<mesh::Mesh<U>> mesh,
 
   // Create a scalar function space
   auto V = std::make_shared<fem::FunctionSpace<U>>(
-      fem::create_functionspace<U>(mesh, e, 1));
+      fem::create_functionspace(mesh, e, 1));
 
   // Create a finite element Function
   auto u = std::make_shared<fem::Function<T>>(V);

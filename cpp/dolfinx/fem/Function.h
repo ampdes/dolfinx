@@ -39,7 +39,9 @@ class Expression;
 ///
 /// @tparam T The function scalar type.
 /// @tparam U The mesh geometry scalar type.
-template <typename T, std::floating_point U = dolfinx::scalar_value_type_t<T>>
+template <typename T,
+          std::floating_point ElementScalar = dolfinx::scalar_value_type_t<T>,
+          std::floating_point GeometryScalar = ElementScalar>
 class Function
 {
 public:
@@ -49,7 +51,8 @@ public:
 
   /// Create function on given function space
   /// @param[in] V The function space
-  explicit Function(std::shared_ptr<const FunctionSpace<U>> V)
+  explicit Function(
+      std::shared_ptr<const FunctionSpace<ElementScalar, GeometryScalar>> V)
       : _function_space(V),
         _x(std::make_shared<la::Vector<T>>(V->dofmap()->index_map,
                                            V->dofmap()->index_map_bs()))
@@ -69,8 +72,9 @@ public:
   ///
   /// @param[in] V The function space
   /// @param[in] x The vector
-  Function(std::shared_ptr<const FunctionSpace<U>> V,
-           std::shared_ptr<la::Vector<T>> x)
+  Function(
+      std::shared_ptr<const FunctionSpace<ElementScalar, GeometryScalar>> V,
+      std::shared_ptr<la::Vector<T>> x)
       : _function_space(V), _x(x)
   {
     // We do not check for a subspace since this constructor is used for
@@ -129,12 +133,18 @@ public:
       x_new[i] = x_old[map[i]];
     }
 
-    return Function(std::make_shared<FunctionSpace<U>>(std::move(V)), x);
+    return Function(
+        std::make_shared<FunctionSpace<ElementScalar, GeometryScalar>>(
+            std::move(V)),
+        x);
   }
 
   /// @brief Access the function space.
   /// @return The function space
-  std::shared_ptr<const FunctionSpace<U>> function_space() const
+  std::shared_ptr<const FunctionSpace<ElementScalar, GeometryScalar
+
+                                      >>
+  function_space() const
   {
     return _function_space;
   }
@@ -152,9 +162,10 @@ public:
   /// nonmatching meshes. This data can be generated with
   /// generate_nonmatching_meshes_interpolation_data (optional).
   void interpolate(
-      const Function<T, U>& v, std::span<const std::int32_t> cells,
+      const Function<T, ElementScalar, GeometryScalar>& v,
+      std::span<const std::int32_t> cells,
       const std::tuple<std::vector<std::int32_t>, std::vector<std::int32_t>,
-                       std::vector<U>, std::vector<std::int32_t>>&
+                       std::vector<ElementScalar>, std::vector<std::int32_t>>&
           nmm_interpolation_data
       = {})
   {
@@ -167,9 +178,9 @@ public:
   /// nonmatching meshes. This data can be generated with
   /// generate_nonmatching_meshes_interpolation_data (optional).
   void interpolate(
-      const Function<T, U>& v,
+      const Function<T, ElementScalar, GeometryScalar>& v,
       const std::tuple<std::vector<std::int32_t>, std::vector<std::int32_t>,
-                       std::vector<U>, std::vector<std::int32_t>>&
+                       std::vector<ElementScalar>, std::vector<std::int32_t>>&
           nmm_interpolation_data
       = {})
   {
@@ -190,7 +201,7 @@ public:
   void interpolate(
       const std::function<std::pair<std::vector<T>, std::vector<std::size_t>>(
           std::experimental::mdspan<
-              const U,
+              const GeometryScalar,
               std::experimental::extents<
                   std::size_t, 3, std::experimental::dynamic_extent>>)>& f,
       std::span<const std::int32_t> cells)
@@ -198,11 +209,12 @@ public:
     assert(_function_space);
     assert(_function_space->element());
     assert(_function_space->mesh());
-    const std::vector<U> x = fem::interpolation_coords<U>(
-        *_function_space->element(), _function_space->mesh()->geometry(),
-        cells);
+    const std::vector<GeometryScalar> x
+        = fem::interpolation_coords<GeometryScalar>(
+            *_function_space->element(), _function_space->mesh()->geometry(),
+            cells);
     namespace stdex = std::experimental;
-    stdex::mdspan<const U,
+    stdex::mdspan<const GeometryScalar,
                   stdex::extents<std::size_t, 3, stdex::dynamic_extent>>
         _x(x.data(), 3, x.size() / 3);
 
@@ -249,7 +261,9 @@ public:
   void interpolate(
       const std::function<std::pair<std::vector<T>, std::vector<std::size_t>>(
           std::experimental::mdspan<
-              const U,
+              const ElementScalar
+
+              ,
               std::experimental::extents<
                   std::size_t, 3, std::experimental::dynamic_extent>>)>& f)
   {
@@ -270,7 +284,9 @@ public:
   /// `FiniteElement::interpolation_points()` for the element associated
   /// with `u`.
   /// @param[in] cells The cells to interpolate on
-  void interpolate(const Expression<T, U>& e,
+  void interpolate(const Expression<T, ElementScalar
+
+                                    >& e,
                    std::span<const std::int32_t> cells)
   {
     // Check that spaces are compatible
@@ -338,7 +354,7 @@ public:
 
   /// Interpolate an Expression (based on UFL) on all cells
   /// @param[in] e The function to be interpolated
-  void interpolate(const Expression<T, U>& e)
+  void interpolate(const Expression<T, ElementScalar>& e)
   {
     assert(_function_space);
     assert(_function_space->mesh());
@@ -363,7 +379,8 @@ public:
   /// for points with a negative cell index. This argument must be
   /// passed with the correct size. Storage is row-major.
   /// @param[in] ushape The shape of `u`.
-  void eval(std::span<const U> x, std::array<std::size_t, 2> xshape,
+  void eval(std::span<const GeometryScalar> x,
+            std::array<std::size_t, 2> xshape,
             std::span<const std::int32_t> cells, std::span<T> u,
             std::array<std::size_t, 2> ushape) const
   {
@@ -403,12 +420,12 @@ public:
       throw std::runtime_error(
           "Function with multiple geometry maps not implemented.");
     }
-    const CoordinateElement<U>& cmap = mesh->geometry().cmaps()[0];
+    const CoordinateElement<GeometryScalar>& cmap = mesh->geometry().cmaps()[0];
 
     // Get geometry data
     auto x_dofmap = mesh->geometry().dofmap();
     const std::size_t num_dofs_g = cmap.dim();
-    std::span<const U> x_g = mesh->geometry().x();
+    std::span<const GeometryScalar> x_g = mesh->geometry().x();
 
     // Get element
     auto element = _function_space->element();
@@ -444,14 +461,15 @@ public:
     }
 
     namespace stdex = std::experimental;
-    using cmdspan4_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 4>>;
-    using mdspan2_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
-    using mdspan3_t = stdex::mdspan<U, stdex::dextents<std::size_t, 3>>;
+    // using cmdspan4_t = stdex::mdspan<const U, stdex::dextents<std::size_t,
+    // 4>>; using mdspan2_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
+    // using mdspan3_t = stdex::mdspan<U, stdex::dextents<std::size_t, 3>>;
 
-    std::vector<U> coord_dofs_b(num_dofs_g * gdim);
-    mdspan2_t coord_dofs(coord_dofs_b.data(), num_dofs_g, gdim);
-    std::vector<U> xp_b(1 * gdim);
-    mdspan2_t xp(xp_b.data(), 1, gdim);
+    std::vector<GeometryScalar> coord_dofs_b(num_dofs_g * gdim);
+    impl::mdspan_t<GeometryScalar, 2> coord_dofs(coord_dofs_b.data(),
+                                                 num_dofs_g, gdim);
+    std::vector<GeometryScalar> xp_b(1 * gdim);
+    impl::mdspan_t<GeometryScalar, 2> xp(xp_b.data(), 1, gdim);
 
     // Loop over points
     std::fill(u.data(), u.data() + u.size(), 0.0);
@@ -460,38 +478,40 @@ public:
     // Evaluate geometry basis at point (0, 0, 0) on the reference cell.
     // Used in affine case.
     std::array<std::size_t, 4> phi0_shape = cmap.tabulate_shape(1, 1);
-    std::vector<U> phi0_b(std::reduce(phi0_shape.begin(), phi0_shape.end(), 1,
-                                      std::multiplies{}));
-    cmdspan4_t phi0(phi0_b.data(), phi0_shape);
-    cmap.tabulate(1, std::vector<U>(tdim), {1, tdim}, phi0_b);
+    std::vector<GeometryScalar> phi0_b(std::reduce(
+        phi0_shape.begin(), phi0_shape.end(), 1, std::multiplies{}));
+    impl::mdspan_t<const GeometryScalar, 4> phi0(phi0_b.data(), phi0_shape);
+    cmap.tabulate(1, std::vector<GeometryScalar>(tdim), {1, tdim}, phi0_b);
     auto dphi0 = stdex::submdspan(phi0, std::pair(1, tdim + 1), 0,
                                   stdex::full_extent, 0);
 
     // Data structure for evaluating geometry basis at specific points.
     // Used in non-affine case.
     std::array<std::size_t, 4> phi_shape = cmap.tabulate_shape(1, 1);
-    std::vector<U> phi_b(
+    std::vector<GeometryScalar> phi_b(
         std::reduce(phi_shape.begin(), phi_shape.end(), 1, std::multiplies{}));
-    cmdspan4_t phi(phi_b.data(), phi_shape);
+    impl::mdspan_t<const GeometryScalar, 4> phi(phi_b.data(), phi_shape);
     auto dphi = stdex::submdspan(phi, std::pair(1, tdim + 1), 0,
                                  stdex::full_extent, 0);
 
     // Reference coordinates for each point
-    std::vector<U> Xb(xshape[0] * tdim);
-    mdspan2_t X(Xb.data(), xshape[0], tdim);
+    std::vector<GeometryScalar> Xb(xshape[0] * tdim);
+    impl::mdspan_t<GeometryScalar, 2> X(Xb.data(), xshape[0], tdim);
 
     // Geometry data at each point
-    std::vector<U> J_b(xshape[0] * gdim * tdim);
-    mdspan3_t J(J_b.data(), xshape[0], gdim, tdim);
-    std::vector<U> K_b(xshape[0] * tdim * gdim);
-    mdspan3_t K(K_b.data(), xshape[0], tdim, gdim);
-    std::vector<U> detJ(xshape[0]);
-    std::vector<U> det_scratch(2 * gdim * tdim);
+    std::vector<GeometryScalar> J_b(xshape[0] * gdim * tdim);
+    impl::mdspan_t<GeometryScalar, 3> J(J_b.data(), xshape[0], gdim, tdim);
+    std::vector<GeometryScalar> K_b(xshape[0] * tdim * gdim);
+    impl::mdspan_t<GeometryScalar, 3> K(K_b.data(), xshape[0], tdim, gdim);
+    std::vector<GeometryScalar> detJ(xshape[0]);
+    std::vector<GeometryScalar>
+
+        det_scratch(2 * gdim * tdim);
 
     // Prepare geometry data in each cell
     for (std::size_t p = 0; p < cells.size(); ++p)
     {
-      const int cell_index = cells[p];
+      const std::int32_t cell_index = cells[p];
 
       // Skip negative cell indices
       if (cell_index < 0)
@@ -513,21 +533,24 @@ public:
       auto _J = stdex::submdspan(J, p, stdex::full_extent, stdex::full_extent);
       auto _K = stdex::submdspan(K, p, stdex::full_extent, stdex::full_extent);
 
-      std::array<U, 3> Xpb = {0, 0, 0};
-      stdex::mdspan<U, stdex::extents<std::size_t, 1, stdex::dynamic_extent>>
+      std::array<GeometryScalar, 3> Xpb = {0, 0, 0};
+      stdex::mdspan<GeometryScalar,
+                    stdex::extents<std::size_t, 1, stdex::dynamic_extent>>
           Xp(Xpb.data(), 1, tdim);
 
       // Compute reference coordinates X, and J, detJ and K
       if (cmap.is_affine())
       {
-        CoordinateElement<U>::compute_jacobian(dphi0, coord_dofs, _J);
-        CoordinateElement<U>::compute_jacobian_inverse(_J, _K);
-        std::array<U, 3> x0 = {0, 0, 0};
+        CoordinateElement<GeometryScalar>::compute_jacobian(dphi0, coord_dofs,
+                                                            _J);
+        CoordinateElement<GeometryScalar>::compute_jacobian_inverse(_J, _K);
+        std::array<GeometryScalar, 3> x0 = {0, 0, 0};
         for (std::size_t i = 0; i < coord_dofs.extent(1); ++i)
           x0[i] += coord_dofs(0, i);
-        CoordinateElement<U>::pull_back_affine(Xp, _K, x0, xp);
-        detJ[p] = CoordinateElement<U>::compute_jacobian_determinant(
-            _J, det_scratch);
+        CoordinateElement<GeometryScalar>::pull_back_affine(Xp, _K, x0, xp);
+        detJ[p]
+            = CoordinateElement<GeometryScalar>::compute_jacobian_determinant(
+                _J, det_scratch);
       }
       else
       {
@@ -535,10 +558,12 @@ public:
         cmap.pull_back_nonaffine(Xp, xp, coord_dofs);
 
         cmap.tabulate(1, std::span(Xpb.data(), tdim), {1, tdim}, phi_b);
-        CoordinateElement<U>::compute_jacobian(dphi, coord_dofs, _J);
-        CoordinateElement<U>::compute_jacobian_inverse(_J, _K);
-        detJ[p] = CoordinateElement<U>::compute_jacobian_determinant(
-            _J, det_scratch);
+        CoordinateElement<GeometryScalar>::compute_jacobian(dphi, coord_dofs,
+                                                            _J);
+        CoordinateElement<GeometryScalar>::compute_jacobian_inverse(_J, _K);
+        detJ[p]
+            = CoordinateElement<GeometryScalar>::compute_jacobian_determinant(
+                _J, det_scratch);
       }
 
       for (std::size_t j = 0; j < X.extent(1); ++j)
@@ -546,27 +571,31 @@ public:
     }
 
     // Prepare basis function data structures
-    std::vector<U> basis_derivatives_reference_values_b(
+    std::vector<ElementScalar> basis_derivatives_reference_values_b(
         1 * xshape[0] * space_dimension * reference_value_size);
-    cmdspan4_t basis_derivatives_reference_values(
+    impl::mdspan_t<ElementScalar, 4> basis_derivatives_reference_values(
         basis_derivatives_reference_values_b.data(), 1, xshape[0],
         space_dimension, reference_value_size);
-    std::vector<U> basis_values_b(space_dimension * value_size);
-    mdspan2_t basis_values(basis_values_b.data(), space_dimension, value_size);
+    std::vector<ElementScalar> basis_values_b(space_dimension * value_size);
+    impl::mdspan_t<ElementScalar, 2> basis_values(basis_values_b.data(),
+                                                  space_dimension, value_size);
 
     // Compute basis on reference element
     element->tabulate(basis_derivatives_reference_values_b, Xb,
                       {X.extent(0), X.extent(1)}, 0);
 
-    using xu_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
-    using xU_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
-    using xJ_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
-    using xK_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
+    using xu_t = stdex::mdspan<ElementScalar, stdex::dextents<std::size_t, 2>>;
+    using xU_t
+        = stdex::mdspan<const ElementScalar, stdex::dextents<std::size_t, 2>>;
+    using xJ_t
+        = stdex::mdspan<const GeometryScalar, stdex::dextents<std::size_t, 2>>;
+    using xK_t
+        = stdex::mdspan<const GeometryScalar, stdex::dextents<std::size_t, 2>>;
     auto push_forward_fn
         = element->basix_element().template map_fn<xu_t, xU_t, xJ_t, xK_t>();
 
     auto apply_dof_transformation
-        = element->template get_dof_transformation_function<U>();
+        = element->template get_dof_transformation_function<ElementScalar>();
     const std::size_t num_basis_values = space_dimension * reference_value_size;
 
     for (std::size_t p = 0; p < cells.size(); ++p)
@@ -623,7 +652,8 @@ public:
 
 private:
   // The function space
-  std::shared_ptr<const FunctionSpace<U>> _function_space;
+  std::shared_ptr<const FunctionSpace<ElementScalar, GeometryScalar>>
+      _function_space;
 
   // The vector of expansion coefficients (local)
   std::shared_ptr<la::Vector<T>> _x;

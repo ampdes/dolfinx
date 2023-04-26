@@ -24,8 +24,15 @@
 
 namespace dolfinx::fem
 {
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point V>
 class Function;
+
+namespace impl
+{
+template <typename X, std::size_t D>
+using mdspan_t
+    = std::experimental::mdspan<X, std::experimental::dextents<std::size_t, D>>;
+}
 
 /// @brief Compute the evaluation points in the physical space at which
 /// an expression should be computed to interpolate it in a finite
@@ -113,8 +120,8 @@ std::vector<T> interpolation_coords(const fem::FiniteElement<T>& element,
 /// fem::interpolation_coords.
 /// @tparam T Scalar type
 /// @tparam U Mesh geometry type
-template <typename T, std::floating_point U>
-void interpolate(Function<T, U>& u, std::span<const T> f,
+template <typename T, std::floating_point U, std::floating_point X>
+void interpolate(Function<T, U, X>& u, std::span<const T> f,
                  std::array<std::size_t, 2> fshape,
                  std::span<const std::int32_t> cells);
 
@@ -313,8 +320,10 @@ void interpolation_apply(const U& Pi, const V& data, std::span<T> coeffs,
 /// @pre The functions `u1` and `u0` must share the same mesh and the
 /// elements must share the same basis function map. Neither is checked
 /// by the function.
-template <typename T, std::floating_point U>
-void interpolate_same_map(Function<T, U>& u1, const Function<T, U>& u0,
+template <typename T, std::floating_point ElementScalar,
+          std::floating_point GeometryScalar>
+void interpolate_same_map(Function<T, ElementScalar, GeometryScalar>& u1,
+                          const Function<T, ElementScalar, GeometryScalar>& u0,
                           std::span<const std::int32_t> cells)
 {
   auto V0 = u0.function_space();
@@ -401,9 +410,12 @@ void interpolate_same_map(Function<T, U>& u1, const Function<T, U>& u0,
 /// @param[in] cells The cells to interpolate on
 /// @pre The functions `u1` and `u0` must share the same mesh. This is
 /// not checked by the function.
-template <typename T, std::floating_point U>
-void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
-                                  std::span<const std::int32_t> cells)
+template <typename T, std::floating_point ElementScalar,
+          std::floating_point GeometryScalar>
+void interpolate_nonmatching_maps(
+    Function<T, ElementScalar, GeometryScalar>& u1,
+    const Function<T, ElementScalar, GeometryScalar>& u0,
+    std::span<const std::int32_t> cells)
 {
   // Get mesh
   auto V0 = u0.function_space();
@@ -441,8 +453,8 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
   const int bs0 = element0->block_size();
   const int bs1 = element1->block_size();
   auto apply_dof_transformation0
-      = element0->template get_dof_transformation_function<U>(false, false,
-                                                              false);
+      = element0->template get_dof_transformation_function<ElementScalar>(
+          false, false, false);
   auto apply_inverse_dof_transform1
       = element1->template get_dof_transformation_function<T>(true, true,
                                                               false);
@@ -456,68 +468,74 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
   if (mesh->geometry().cmaps().size() > 1)
     throw std::runtime_error("Multiple cmaps");
 
-  const CoordinateElement<U>& cmap = mesh->geometry().cmaps()[0];
+  const CoordinateElement<GeometryScalar>& cmap = mesh->geometry().cmaps()[0];
   auto x_dofmap = mesh->geometry().dofmap();
   const std::size_t num_dofs_g = cmap.dim();
-  std::span<const U> x_g = mesh->geometry().x();
+  std::span<const GeometryScalar> x_g = mesh->geometry().x();
 
   namespace stdex = std::experimental;
-  using cmdspan2_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
-  using cmdspan4_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 4>>;
-  using mdspan2_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
-  using mdspan3_t = stdex::mdspan<U, stdex::dextents<std::size_t, 3>>;
-  using mdspan3T_t = stdex::mdspan<T, stdex::dextents<std::size_t, 3>>;
+  // using cmdspan2_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
+  // using cmdspan4_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 4>>;
+  // using mdspan2_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
+  // using mdspan3_t = stdex::mdspan<U, stdex::dextents<std::size_t, 3>>;
+  // using mdspan3T_t = stdex::mdspan<T, stdex::dextents<std::size_t, 3>>;
 
   // Evaluate coordinate map basis at reference interpolation points
   const std::array<std::size_t, 4> phi_shape
       = cmap.tabulate_shape(1, Xshape[0]);
-  std::vector<U> phi_b(
+  std::vector<GeometryScalar> phi_b(
       std::reduce(phi_shape.begin(), phi_shape.end(), 1, std::multiplies{}));
-  cmdspan4_t phi(phi_b.data(), phi_shape);
+  mdspan_t<GeometryScalar, 4> phi(phi_b.data(), phi_shape);
   cmap.tabulate(1, X, Xshape, phi_b);
 
   // Evaluate v basis functions at reference interpolation points
   const auto [_basis_derivatives_reference0, b0shape]
       = element0->tabulate(X, Xshape, 0);
-  cmdspan4_t basis_derivatives_reference0(_basis_derivatives_reference0.data(),
-                                          b0shape);
+  mdspan_t<const ElementScalar, 4> basis_derivatives_reference0(
+      _basis_derivatives_reference0.data(), b0shape);
 
   // Create working arrays
   std::vector<T> local1(element1->space_dimension());
   std::vector<T> coeffs0(element0->space_dimension());
 
-  std::vector<U> basis0_b(Xshape[0] * dim0 * value_size0);
-  mdspan3_t basis0(basis0_b.data(), Xshape[0], dim0, value_size0);
+  std::vector<ElementScalar> basis0_b(Xshape[0] * dim0 * value_size0);
+  mdspan_t<ElementScalar, 3> basis0(basis0_b.data(), Xshape[0], dim0,
+                                    value_size0);
 
-  std::vector<U> basis_reference0_b(Xshape[0] * dim0 * value_size_ref0);
-  mdspan3_t basis_reference0(basis_reference0_b.data(), Xshape[0], dim0,
-                             value_size_ref0);
+  std::vector<ElementScalar> basis_reference0_b(Xshape[0] * dim0
+                                                * value_size_ref0);
+  mdspan_t<ElementScalar, 3> basis_reference0(basis_reference0_b.data(),
+                                              Xshape[0], dim0, value_size_ref0);
 
   std::vector<T> values0_b(Xshape[0] * 1 * element1->value_size());
-  mdspan3T_t values0(values0_b.data(), Xshape[0], 1, element1->value_size());
+  mdspan_t<T, 3> values0(values0_b.data(), Xshape[0], 1,
+                         element1->value_size());
 
   std::vector<T> mapped_values_b(Xshape[0] * 1 * element1->value_size());
-  mdspan3T_t mapped_values0(mapped_values_b.data(), Xshape[0], 1,
-                            element1->value_size());
+  mdspan_t<T, 3> mapped_values0(mapped_values_b.data(), Xshape[0], 1,
+                                element1->value_size());
 
-  std::vector<U> coord_dofs_b(num_dofs_g * gdim);
-  mdspan2_t coord_dofs(coord_dofs_b.data(), num_dofs_g, gdim);
+  std::vector<GeometryScalar> coord_dofs_b(num_dofs_g * gdim);
+  mdspan_t<GeometryScalar, 2> coord_dofs(coord_dofs_b.data(), num_dofs_g, gdim);
 
-  std::vector<U> J_b(Xshape[0] * gdim * tdim);
-  mdspan3_t J(J_b.data(), Xshape[0], gdim, tdim);
-  std::vector<U> K_b(Xshape[0] * tdim * gdim);
-  mdspan3_t K(K_b.data(), Xshape[0], tdim, gdim);
-  std::vector<U> detJ(Xshape[0]);
-  std::vector<U> det_scratch(2 * gdim * tdim);
+  std::vector<GeometryScalar> J_b(Xshape[0] * gdim * tdim);
+  mdspan_t<GeometryScalar, 3> J(J_b.data(), Xshape[0], gdim, tdim);
+  std::vector<GeometryScalar> K_b(Xshape[0] * tdim * gdim);
+  mdspan_t<GeometryScalar, 3> K(K_b.data(), Xshape[0], tdim, gdim);
+  std::vector<GeometryScalar> detJ(Xshape[0]);
+  std::vector<GeometryScalar> det_scratch(2 * gdim * tdim);
 
   // Get interpolation operator
   const auto [_Pi_1, pi_shape] = element1->interpolation_operator();
-  cmdspan2_t Pi_1(_Pi_1.data(), pi_shape);
+  mdspan_t<const ElementScalar, 2> Pi_1(_Pi_1.data(), pi_shape);
 
-  using u_t = stdex::mdspan<U, stdex::dextents<std::size_t, 2>>;
-  using U_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
-  using J_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
-  using K_t = stdex::mdspan<const U, stdex::dextents<std::size_t, 2>>;
+  using u_t = stdex::mdspan<ElementScalar, stdex::dextents<std::size_t, 2>>;
+  using U_t
+      = stdex::mdspan<const ElementScalar, stdex::dextents<std::size_t, 2>>;
+  using J_t
+      = stdex::mdspan<const GeometryScalar, stdex::dextents<std::size_t, 2>>;
+  using K_t
+      = stdex::mdspan<const GeometryScalar, stdex::dextents<std::size_t, 2>>;
   auto push_forward_fn0
       = element0->basix_element().template map_fn<u_t, U_t, J_t, K_t>();
 
@@ -589,7 +607,6 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
         coeffs0[dof_bs0 * i + k] = array0[dof_bs0 * dofs0[i] + k];
 
     // Evaluate v at the interpolation points (physical space values)
-    using X = typename dolfinx::scalar_value_type_t<T>;
     for (std::size_t p = 0; p < Xshape[0]; ++p)
     {
       for (int k = 0; k < bs0; ++k)
@@ -598,7 +615,11 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
         {
           T acc = 0;
           for (std::size_t i = 0; i < dim0; ++i)
-            acc += coeffs0[bs0 * i + k] * static_cast<X>(basis0(p, i, j));
+          {
+            acc += coeffs0[bs0 * i + k]
+                   * static_cast<typename dolfinx::scalar_value_type_t<T>>(
+                       basis0(p, i, j));
+          }
           values0(p, 0, j * bs0 + k) = acc;
         }
       }
@@ -630,9 +651,9 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
   }
 }
 
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point V>
 void interpolate_nonmatching_meshes(
-    Function<T, U>& u, const Function<T, U>& v,
+    Function<T, U, V>& u, const Function<T, U, V>& v,
     std::span<const std::int32_t> cells,
     const std::tuple<std::vector<std::int32_t>, std::vector<std::int32_t>,
                      std::vector<U>, std::vector<std::int32_t>>&
@@ -713,8 +734,8 @@ void interpolate_nonmatching_meshes(
 //----------------------------------------------------------------------------
 } // namespace impl
 
-template <typename T, std::floating_point U>
-void interpolate(Function<T, U>& u, std::span<const T> f,
+template <typename T, std::floating_point U, std::floating_point GeometryScalar>
+void interpolate(Function<T, U, GeometryScalar>& u, std::span<const T> f,
                  std::array<std::size_t, 2> fshape,
                  std::span<const std::int32_t> cells)
 {
@@ -1052,9 +1073,9 @@ create_nonmatching_meshes_interpolation_data(const mesh::Mesh<T>& mesh0,
 /// @param[in] nmm_interpolation_data Auxiliary data to interpolate on
 /// nonmatching meshes. This data can be generated with
 /// create_nonmatching_meshes_interpolation_data (optional).
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point GeometryScalar>
 void interpolate(
-    Function<T, U>& u, const Function<T, U>& v,
+    Function<T, U, GeometryScalar>& u, const Function<T, U, GeometryScalar>& v,
     std::span<const std::int32_t> cells,
     const std::tuple<std::vector<std::int32_t>, std::vector<std::int32_t>,
                      std::vector<U>, std::vector<std::int32_t>>&

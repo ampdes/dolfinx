@@ -20,7 +20,7 @@ namespace dolfinx
 {
 namespace fem
 {
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point V>
 class Function;
 }
 

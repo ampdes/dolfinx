@@ -39,6 +39,7 @@ private:
                                   std::experimental::dextents<std::size_t, D>>;
 
 public:
+  /// @brief  Mesh type
   using mesh_type = mesh::Mesh<T>;
 
   /// @brief Create function space for given mesh, element and dofmap.

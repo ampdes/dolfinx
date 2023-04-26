@@ -26,6 +26,7 @@ template <std::floating_point T>
 class FiniteElement
 {
 public:
+  /// @brief Scalar type of the finite element basis
   using value_type = T;
 
   /// Create finite element from UFC finite element

@@ -133,8 +133,8 @@ int main(int argc, char* argv[])
                          mesh::create_cell_partitioner(mesh::GhostMode::none)));
 
     auto V = std::make_shared<fem::FunctionSpace<double>>(
-        fem::create_functionspace(functionspace_form_hyperelasticity_F_form,
-                                  "u", mesh));
+        fem::create_functionspace<double>(
+            functionspace_form_hyperelasticity_F_form, "u", mesh));
 
     // Define solution function
     auto u = std::make_shared<fem::Function<T>>(V);

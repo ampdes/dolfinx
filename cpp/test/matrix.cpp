@@ -77,11 +77,12 @@ void spmv(la::MatrixCSR<T>& A, la::Vector<T>& x, la::Vector<T>& y)
   x.scatter_fwd_begin();
 
   const std::int32_t nrowslocal = A.num_owned_rows();
-  std::span<const std::int64_t> row_ptr(A.row_ptr().data(), nrowslocal + 1);
-  std::span<const std::int32_t> cols(A.cols().data(), row_ptr[nrowslocal]);
+  std::span<const std::int64_t> row_ptr(A.mat()._row_ptr.data(),
+                                        nrowslocal + 1);
+  std::span<const std::int32_t> cols(A.mat()._cols.data(), row_ptr[nrowslocal]);
   std::span<const std::int64_t> off_diag_offset(A.off_diag_offset().data(),
                                                 nrowslocal);
-  std::span<const T> values(A.values().data(), row_ptr[nrowslocal]);
+  std::span<const T> values(A.mat()._data.data(), row_ptr[nrowslocal]);
 
   std::span<const T> _x = x.array();
   std::span<T> _y = y.mutable_array();

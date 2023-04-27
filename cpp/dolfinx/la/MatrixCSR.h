@@ -22,9 +22,7 @@ namespace impl
 {
 /// @brief Set data in a CSR matrix.
 ///
-/// @param[out] data The CSR matrix data
-/// @param[in] cols The CSR column indices
-/// @param[in] row_ptr The pointer to the ith row in the CSR data
+/// @param mat The CSR matrix
 /// @param[in] x The `m` by `n` dense block of values (row-major) to set
 /// in the matrix
 /// @param[in] xrows The row indices of `x`
@@ -32,23 +30,47 @@ namespace impl
 /// @param[in] local_size The maximum row index that can be set. Used
 /// when debugging is own to check that rows beyond a permitted range
 /// are not being set.
-template <typename U, typename V, typename W, typename X, typename Y>
-void set_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
-             const Y& xrows, const Y& xcols, typename Y::value_type local_size);
+template <class Mat, typename X, typename Y>
+void set_csr(Mat& mat, const X& x, const Y& xrows, const Y& xcols,
+             typename Y::value_type local_size);
 
 /// @brief Add data to a CSR matrix
 ///
-/// @param[out] data The CSR matrix data
-/// @param[in] cols The CSR column indices
-/// @param[in] row_ptr The pointer to the ith row in the CSR data
+/// @param mat The CSR matrix
 /// @param[in] x The `m` by `n` dense block of values (row-major) to add
 /// to the matrix
 /// @param[in] xrows The row indices of `x`
 /// @param[in] xcols The column indices of `x`
-template <typename U, typename V, typename W, typename X, typename Y>
-void add_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
-             const Y& xrows, const Y& xcols);
+template <class Mat, typename X, typename Y>
+void add_csr(Mat& mat, const X& x, const Y& xrows, const Y& xcols);
 } // namespace impl
+
+/// Simple CSR matrix to store owned and ghost blocks
+template <class container_t, class column_container_t, class rowptr_container_t>
+class SparseMatrix
+{
+public:
+  /// Value type of scalar
+  using value_type = typename container_t::value_type;
+
+  /// Create an empty sparse matrix from basic sparsity data
+  /// @param nnz Number of non-zeros
+  /// @param sp_cols Column indices
+  /// @param sp_row_ptr Row pointer
+  SparseMatrix(std::int32_t nnz, const std::vector<std::int32_t>& sp_cols,
+               const std::vector<std::int32_t>& sp_row_ptr)
+      : values(nnz, 0), cols(sp_cols.begin(), sp_cols.end()),
+        row_ptr(sp_row_ptr.begin(), sp_row_ptr.end())
+  {
+  }
+
+  /// The values
+  container_t values;
+  /// The column indices
+  column_container_t cols;
+  /// The row offset pointers
+  rowptr_container_t row_ptr;
+};
 
 /// Distributed sparse matrix
 ///
@@ -129,7 +151,10 @@ public:
   /// @brief Set all non-zero local entries to a value including entries
   /// in ghost rows.
   /// @param[in] x The value to set non-zero matrix entries to
-  void set(value_type x) { std::fill(_data.begin(), _data.end(), x); }
+  void set(value_type x)
+  {
+    std::fill(_mat.values.begin(), _mat.values.end(), x);
+  }
 
   /// @brief Set values in the matrix.
   /// @note Only entries included in the sparsity pattern used to
@@ -146,8 +171,7 @@ public:
   void set(std::span<const value_type> x, std::span<const std::int32_t> rows,
            std::span<const std::int32_t> cols)
   {
-    impl::set_csr(_data, _cols, _row_ptr, x, rows, cols,
-                  _index_maps[0]->size_local());
+    impl::set_csr(_mat, x, rows, cols, _index_maps[0]->size_local());
   }
 
   /// @brief Accumulate values in the matrix
@@ -165,14 +189,14 @@ public:
   void add(std::span<const value_type> x, std::span<const std::int32_t> rows,
            std::span<const std::int32_t> cols)
   {
-    impl::add_csr(_data, _cols, _row_ptr, x, rows, cols);
+    impl::add_csr(_mat, x, rows, cols);
   }
 
   /// Number of local rows excluding ghost rows
   std::int32_t num_owned_rows() const { return _index_maps[0]->size_local(); }
 
   /// Number of local rows including ghost rows
-  std::int32_t num_all_rows() const { return _row_ptr.size() - 1; }
+  std::int32_t num_all_rows() const { return _mat.row_ptr.size() - 1; }
 
   /// Copy to a dense matrix
   /// @note This function is typically used for debugging and not used
@@ -224,21 +248,12 @@ public:
     return _index_maps;
   }
 
-  /// Get local data values
-  /// @note Includes ghost values
-  container_type& values() { return _data; }
-
-  /// Get local values (const version)
-  /// @note Includes ghost values
-  const container_type& values() const { return _data; }
-
-  /// Get local row pointers
-  /// @note Includes pointers to ghost rows
-  const rowptr_container_type& row_ptr() const { return _row_ptr; }
-
-  /// Get local column indices
-  /// @note Includes columns in ghost rows
-  const column_container_type& cols() const { return _cols; }
+  /// Return underlying sparse matrix storage
+  SparseMatrix<container_type, column_container_type, rowptr_container_type>&
+  mat()
+  {
+    return _mat;
+  }
 
   /// Get the start of off-diagonal (unowned columns) on each row,
   /// allowing the matrix to be split (virtually) into two parts.
@@ -260,9 +275,13 @@ private:
   std::array<int, 2> _bs;
 
   // Matrix data
-  container_type _data;
-  column_container_type _cols;
-  rowptr_container_type _row_ptr;
+  SparseMatrix<container_type, column_container_type, rowptr_container_type>
+      _mat;
+
+  // Matrix data for "ghost block", i.e. columns which are in the ghost region
+  // of the column index map
+  //  SparseMatrix<container_type, column_container_type, rowptr_container_type>
+  //      _matB;
 
   // Start of off-diagonal (unowned columns) on each row
   rowptr_container_type _off_diagonal_offset;
@@ -291,9 +310,8 @@ private:
 };
 
 //-----------------------------------------------------------------------------
-template <typename U, typename V, typename W, typename X, typename Y>
-void impl::set_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
-                   const Y& xrows, const Y& xcols,
+template <class Mat, typename X, typename Y>
+void impl::set_csr(Mat& mat, const X& x, const Y& xrows, const Y& xcols,
                    [[maybe_unused]] typename Y::value_type local_size)
 {
   assert(x.size() == xrows.size() * xcols.size());
@@ -310,23 +328,22 @@ void impl::set_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
 #endif
 
     // Columns indices for row
-    auto cit0 = std::next(cols.begin(), row_ptr[row]);
-    auto cit1 = std::next(cols.begin(), row_ptr[row + 1]);
+    auto cit0 = std::next(mat.cols.begin(), mat.row_ptr[row]);
+    auto cit1 = std::next(mat.cols.begin(), mat.row_ptr[row + 1]);
     for (std::size_t c = 0; c < xcols.size(); ++c)
     {
       // Find position of column index
       auto it = std::lower_bound(cit0, cit1, xcols[c]);
       assert(it != cit1);
-      std::size_t d = std::distance(cols.begin(), it);
-      assert(d < data.size());
-      data[d] = xr[c];
+      std::size_t d = std::distance(mat.cols.begin(), it);
+      assert(d < mat.values.size());
+      mat.values[d] = xr[c];
     }
   }
 }
 //-----------------------------------------------------------------------------
-template <typename U, typename V, typename W, typename X, typename Y>
-void impl::add_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
-                   const Y& xrows, const Y& xcols)
+template <class Mat, typename X, typename Y>
+void impl::add_csr(Mat& mat, const X& x, const Y& xrows, const Y& xcols)
 {
   assert(x.size() == xrows.size() * xcols.size());
   for (std::size_t r = 0; r < xrows.size(); ++r)
@@ -337,21 +354,21 @@ void impl::add_csr(U&& data, const V& cols, const W& row_ptr, const X& x,
     const T* xr = x.data() + r * xcols.size();
 
 #ifndef NDEBUG
-    if (row >= (int)row_ptr.size())
+    if (row >= (int)mat.row_ptr.size())
       throw std::runtime_error("Local row out of range");
 #endif
 
     // Columns indices for row
-    auto cit0 = std::next(cols.begin(), row_ptr[row]);
-    auto cit1 = std::next(cols.begin(), row_ptr[row + 1]);
+    auto cit0 = std::next(mat.cols.begin(), mat.row_ptr[row]);
+    auto cit1 = std::next(mat.cols.begin(), mat.row_ptr[row + 1]);
     for (std::size_t c = 0; c < xcols.size(); ++c)
     {
       // Find position of column index
       auto it = std::lower_bound(cit0, cit1, xcols[c]);
       assert(it != cit1);
-      std::size_t d = std::distance(cols.begin(), it);
-      assert(d < data.size());
-      data[d] += xr[c];
+      std::size_t d = std::distance(mat.cols.begin(), it);
+      assert(d < mat.values.size());
+      mat.values[d] += xr[c];
     }
   }
 }
@@ -360,9 +377,8 @@ template <class U, class V, class W, class X>
 MatrixCSR<U, V, W, X>::MatrixCSR(const SparsityPattern& p)
     : _index_maps({p.index_map(0),
                    std::make_shared<common::IndexMap>(p.column_index_map())}),
-      _bs({p.block_size(0), p.block_size(1)}), _data(p.num_nonzeros(), 0),
-      _cols(p.graph().array().begin(), p.graph().array().end()),
-      _row_ptr(p.graph().offsets().begin(), p.graph().offsets().end()),
+      _bs({p.block_size(0), p.block_size(1)}),
+      _mat(p.num_nonzeros(), p.graph().array(), p.graph().offsets()),
       _comm(MPI_COMM_NULL)
 {
   // TODO: handle block sizes
@@ -372,7 +388,7 @@ MatrixCSR<U, V, W, X>::MatrixCSR(const SparsityPattern& p)
   // Compute off-diagonal offset for each row
   std::span<const std::int32_t> num_diag_nnz = p.off_diagonal_offset();
   _off_diagonal_offset.reserve(num_diag_nnz.size());
-  std::transform(num_diag_nnz.begin(), num_diag_nnz.end(), _row_ptr.begin(),
+  std::transform(num_diag_nnz.begin(), num_diag_nnz.end(), _mat.row_ptr.begin(),
                  std::back_inserter(_off_diagonal_offset), std::plus{});
 
   // Some short-hand
@@ -411,7 +427,8 @@ MatrixCSR<U, V, W, X>::MatrixCSR(const SparsityPattern& p)
   {
     assert(_ghost_row_to_rank[i] < data_per_proc.size());
     std::size_t pos = local_size[0] + i;
-    data_per_proc[_ghost_row_to_rank[i]] += _row_ptr[pos + 1] - _row_ptr[pos];
+    data_per_proc[_ghost_row_to_rank[i]]
+        += _mat.row_ptr[pos + 1] - _mat.row_ptr[pos];
   }
 
   // Compute send displacements
@@ -427,14 +444,14 @@ MatrixCSR<U, V, W, X>::MatrixCSR(const SparsityPattern& p)
     {
       const int rank = _ghost_row_to_rank[i];
       int row_id = local_size[0] + i;
-      for (int j = _row_ptr[row_id]; j < _row_ptr[row_id + 1]; ++j)
+      for (int j = _mat.row_ptr[row_id]; j < _mat.row_ptr[row_id + 1]; ++j)
       {
         // Get position in send buffer
         const std::int32_t idx_pos = 2 * insert_pos[rank];
 
         // Pack send data (row, col) as global indices
         ghost_index_data[idx_pos] = ghosts0[i];
-        if (std::int32_t col_local = _cols[j]; col_local < local_size[1])
+        if (std::int32_t col_local = _mat.cols[j]; col_local < local_size[1])
           ghost_index_data[idx_pos + 1] = col_local + local_range[1][0];
         else
           ghost_index_data[idx_pos + 1] = ghosts1[col_local - local_size[1]];
@@ -508,14 +525,14 @@ MatrixCSR<U, V, W, X>::MatrixCSR(const SparsityPattern& p)
              and it->first == ghost_index_array[i + 1]);
       local_col = it->second;
     }
-    auto cit0 = std::next(_cols.begin(), _row_ptr[local_row]);
-    auto cit1 = std::next(_cols.begin(), _row_ptr[local_row + 1]);
+    auto cit0 = std::next(_mat.cols.begin(), _mat.row_ptr[local_row]);
+    auto cit1 = std::next(_mat.cols.begin(), _mat.row_ptr[local_row + 1]);
 
     // Find position of column index and insert data
     auto cit = std::lower_bound(cit0, cit1, local_col);
     assert(cit != cit1);
     assert(*cit == local_col);
-    std::size_t d = std::distance(_cols.begin(), cit);
+    std::size_t d = std::distance(_mat.cols.begin(), cit);
     _unpack_pos.push_back(d);
   }
 }
@@ -529,8 +546,8 @@ MatrixCSR<U, V, W, X>::to_dense() const
       = _index_maps[1]->size_local() + _index_maps[1]->num_ghosts();
   std::vector<value_type> A(nrows * ncols);
   for (std::size_t r = 0; r < nrows; ++r)
-    for (std::int32_t j = _row_ptr[r]; j < _row_ptr[r + 1]; ++j)
-      A[r * ncols + _cols[j]] = _data[j];
+    for (std::int32_t j = _mat.row_ptr[r]; j < _mat.row_ptr[r + 1]; ++j)
+      A[r * ncols + _mat.cols[j]] = _mat.values[j];
 
   return A;
 }
@@ -551,11 +568,11 @@ void MatrixCSR<U, V, W, X>::finalize_begin()
     // Get position in send buffer to place data to send to this
     // neighbour
     const std::int32_t val_pos = insert_pos[rank];
-    std::copy(std::next(_data.data(), _row_ptr[local_size0 + i]),
-              std::next(_data.data(), _row_ptr[local_size0 + i + 1]),
+    std::copy(std::next(_mat.values.data(), _mat.row_ptr[local_size0 + i]),
+              std::next(_mat.values.data(), _mat.row_ptr[local_size0 + i + 1]),
               std::next(ghost_value_data.begin(), val_pos));
     insert_pos[rank]
-        += _row_ptr[local_size0 + i + 1] - _row_ptr[local_size0 + i];
+        += _mat.row_ptr[local_size0 + i + 1] - _mat.row_ptr[local_size0 + i];
   }
 
   _ghost_value_data_in.resize(_val_recv_disp.back());
@@ -586,21 +603,23 @@ void MatrixCSR<U, V, W, X>::finalize_end()
   // Add to local rows
   assert(_ghost_value_data_in.size() == _unpack_pos.size());
   for (std::size_t i = 0; i < _ghost_value_data_in.size(); ++i)
-    _data[_unpack_pos[i]] += _ghost_value_data_in[i];
+    _mat.values[_unpack_pos[i]] += _ghost_value_data_in[i];
 
   // Set ghost row data to zero
   const std::int32_t local_size0 = _index_maps[0]->size_local();
-  std::fill(std::next(_data.begin(), _row_ptr[local_size0]), _data.end(), 0);
+  std::fill(std::next(_mat.values.begin(), _mat.row_ptr[local_size0]),
+            _mat.values.end(), 0);
 }
 //-----------------------------------------------------------------------------
 template <typename U, typename V, typename W, typename X>
 double MatrixCSR<U, V, W, X>::norm_squared() const
 {
   const std::size_t num_owned_rows = _index_maps[0]->size_local();
-  assert(num_owned_rows < _row_ptr.size());
+  assert(num_owned_rows < _mat.row_ptr.size());
   double norm_sq_local = std::accumulate(
-      _data.cbegin(), std::next(_data.cbegin(), _row_ptr[num_owned_rows]),
-      double(0), [](auto norm, value_type y) { return norm + std::norm(y); });
+      _mat.values.cbegin(),
+      std::next(_mat.values.cbegin(), _mat.row_ptr[num_owned_rows]), double(0),
+      [](auto norm, value_type y) { return norm + std::norm(y); });
   double norm_sq;
   MPI_Allreduce(&norm_sq_local, &norm_sq, 1, MPI_DOUBLE, MPI_SUM, _comm.comm());
   return norm_sq;

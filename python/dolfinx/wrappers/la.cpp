@@ -113,21 +113,21 @@ void declare_objects(py::module& m, const std::string& type)
       .def_property_readonly("data",
                              [](dolfinx::la::MatrixCSR<T>& self)
                              {
-                               std::span<T> array = self.values();
+                               std::span<T> array = self.mat().values;
                                return py::array_t<T>(array.size(), array.data(),
                                                      py::cast(self));
                              })
       .def_property_readonly("indices",
                              [](dolfinx::la::MatrixCSR<T>& self)
                              {
-                               auto& array = self.cols();
+                               auto& array = self.mat().cols;
                                return py::array_t(array.size(), array.data(),
                                                   py::cast(self));
                              })
       .def_property_readonly("indptr",
                              [](dolfinx::la::MatrixCSR<T>& self)
                              {
-                               auto& array = self.row_ptr();
+                               auto& array = self.mat().row_ptr;
                                return py::array_t(array.size(), array.data(),
                                                   py::cast(self));
                              })

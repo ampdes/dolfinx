@@ -24,7 +24,7 @@ namespace dolfinx::fem
 {
 template <std::floating_point T>
 class CoordinateElement;
-template <typename T, std::floating_point U>
+template <typename T, std::floating_point U, std::floating_point V>
 class Function;
 } // namespace dolfinx::fem
 
@@ -135,7 +135,7 @@ public:
   /// @param[in] t The time stamp to associate with the Function
   /// @param[in] mesh_xpath XPath for a Grid under which Function will
   /// be inserted
-  void write_function(const fem::Function<double, double>& u, double t,
+  void write_function(const fem::Function<double, double, double>& u, double t,
                       std::string mesh_xpath
                       = "/Xdmf/Domain/Grid[@GridType='Uniform'][1]");
 
@@ -144,10 +144,9 @@ public:
   /// @param[in] t The time stamp to associate with the Function
   /// @param[in] mesh_xpath XPath for a Grid under which Function will
   /// be inserted
-  void write_function(const fem::Function<std::complex<double>, double>& u,
-                      double t,
-                      std::string mesh_xpath
-                      = "/Xdmf/Domain/Grid[@GridType='Uniform'][1]");
+  void write_function(
+      const fem::Function<std::complex<double>, double, double>& u, double t,
+      std::string mesh_xpath = "/Xdmf/Domain/Grid[@GridType='Uniform'][1]");
 
   /// Write MeshTags
   /// @param[in] meshtags

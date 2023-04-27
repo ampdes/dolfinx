@@ -8,6 +8,7 @@
 
 #include <complex>
 #include <concepts>
+#include <dolfinx/fem/Function.h>
 #include <hdf5.h>
 #include <mpi.h>
 
@@ -31,12 +32,12 @@ namespace xdmf_function
 {
 
 /// TODO
-void add_function(MPI_Comm comm, const fem::Function<double, double>& u,
+void add_function(MPI_Comm comm, const fem::Function<double, double, double>& u,
                   const double t, pugi::xml_node& xml_node, const hid_t h5_id);
 
 /// TODO
 void add_function(MPI_Comm comm,
-                  const fem::Function<std::complex<double>, double>& u,
+                  const fem::Function<std::complex<double>, double, double>& u,
                   const double t, pugi::xml_node& xml_node, const hid_t h5_id);
 
 } // namespace xdmf_function

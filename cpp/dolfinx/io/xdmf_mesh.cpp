@@ -10,6 +10,7 @@
 #include "xdmf_utils.h"
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/ElementDofLayout.h>
+#include <dolfinx/fem/Function.h>
 #include <pugixml.hpp>
 #include <vector>
 

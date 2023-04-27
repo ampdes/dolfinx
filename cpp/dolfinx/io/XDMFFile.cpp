@@ -13,8 +13,6 @@
 #include "xdmf_utils.h"
 #include <boost/lexical_cast.hpp>
 #include <dolfinx/common/log.h>
-#include <dolfinx/fem/Function.h>
-#include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/MeshTags.h>
@@ -279,14 +277,14 @@ XDMFFile::read_geometry_data(std::string name, std::string xpath) const
   return xdmf_mesh::read_geometry_data(_comm.comm(), _h5_id, grid_node);
 }
 //-----------------------------------------------------------------------------
-void XDMFFile::write_function(const fem::Function<double, double>& u, double t,
-                              std::string mesh_xpath)
+void XDMFFile::write_function(const fem::Function<double, double, double>& u,
+                              double t, std::string mesh_xpath)
 {
   _write_function(_comm, u, t, mesh_xpath, *_xml_doc, _h5_id, _filename);
 }
 //-----------------------------------------------------------------------------
 void XDMFFile::write_function(
-    const fem::Function<std::complex<double>, double>& u, double t,
+    const fem::Function<std::complex<double>, double, double>& u, double t,
     std::string mesh_xpath)
 {
   _write_function(_comm, u, t, mesh_xpath, *_xml_doc, _h5_id, _filename);

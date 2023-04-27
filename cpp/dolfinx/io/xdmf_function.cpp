@@ -181,7 +181,7 @@ void _add_function(MPI_Comm comm, const fem::Function<Scalar, double>& u,
 
 //-----------------------------------------------------------------------------
 void xdmf_function::add_function(MPI_Comm comm,
-                                 const fem::Function<double, double>& u,
+                                 const fem::Function<double, double, double>& u,
                                  const double t, pugi::xml_node& xml_node,
                                  const hid_t h5_id)
 {
@@ -189,7 +189,7 @@ void xdmf_function::add_function(MPI_Comm comm,
 }
 //-----------------------------------------------------------------------------
 void xdmf_function::add_function(
-    MPI_Comm comm, const fem::Function<std::complex<double>, double>& u,
+    MPI_Comm comm, const fem::Function<std::complex<double>, double, double>& u,
     const double t, pugi::xml_node& xml_node, const hid_t h5_id)
 {
   _add_function(comm, u, t, xml_node, h5_id);

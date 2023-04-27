@@ -120,8 +120,8 @@ std::vector<T> interpolation_coords(const fem::FiniteElement<T>& element,
 /// fem::interpolation_coords.
 /// @tparam T Scalar type
 /// @tparam U Mesh geometry type
-template <typename T, std::floating_point U, std::floating_point X>
-void interpolate(Function<T, U, X>& u, std::span<const T> f,
+template <typename T, std::floating_point U, std::floating_point GeometryScalar>
+void interpolate(Function<T, U, GeometryScalar>& u, std::span<const T> f,
                  std::array<std::size_t, 2> fshape,
                  std::span<const std::int32_t> cells);
 

@@ -32,6 +32,24 @@
 #include <dolfinx/common/types.h>
 #include <dolfinx/fem/Constant.h>
 
+#include "ghost_layer.h"
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, std::vector<T> const& v)
+{
+  for (os << "{ "; auto const& e : v)
+    os << e << ' ';
+  return os << '}';
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, std::span<const T> const& v)
+{
+  for (os << "{ "; auto const& e : v)
+    os << e << ' ';
+  return os << '}';
+}
+
 using namespace dolfinx;
 
 namespace linalg
@@ -122,11 +140,21 @@ int main(int argc, char* argv[])
     using U = typename dolfinx::scalar_value_type_t<T>;
 
     MPI_Comm comm = MPI_COMM_WORLD;
+    [[maybe_unused]] int rank = dolfinx::MPI::rank(comm);
 
     // Create mesh and function space
     auto mesh = std::make_shared<mesh::Mesh<U>>(mesh::create_rectangle<U>(
         comm, {{{0.0, 0.0}, {1.0, 1.0}}}, {10, 10}, mesh::CellType::triangle,
-        mesh::create_cell_partitioner(mesh::GhostMode::none)));
+        mesh::create_cell_partitioner(mesh::GhostMode::shared_facet)));
+
+    std::cout << "rank = " << rank << ":"
+              << mesh->topology()->index_map(2)->num_ghosts() << std::endl;
+
+    mesh = create_ghost_layer(mesh);
+
+    std::cout << "rank = " << rank << ":"
+              << mesh->topology()->index_map(2)->num_ghosts() << std::endl;
+
     auto V = std::make_shared<fem::FunctionSpace<U>>(
         fem::create_functionspace(functionspace_form_poisson_M, "ui", mesh));
 
@@ -137,10 +165,40 @@ int main(int argc, char* argv[])
     auto L = std::make_shared<fem::Form<T, U>>(
         fem::create_form<T>(*form_poisson_L, {V}, {}, {{"f", f}}, {}));
 
+    // Create two distinct set of cells, deferred and immediate
+    std::vector deferred_cells = fem::locate_cells_with_ghost_dofs(*V);
+
+    int tdim = mesh->topology()->dim();
+    std::int32_t num_cells = mesh->topology()->index_map(tdim)->size_local();
+    std::vector<std::int32_t> all_cells(num_cells);
+    std::iota(all_cells.begin(), all_cells.end(), 0);
+    std::vector<std::int32_t> non_sharing_cells;
+
+    std::set_difference(
+        all_cells.begin(), all_cells.end(), deferred_cells.begin(),
+        deferred_cells.end(),
+        std::inserter(non_sharing_cells, non_sharing_cells.begin()));
+
+    if (rank == 0)
+    {
+      std::cout << non_sharing_cells.size() << std::endl;
+      std::cout << deferred_cells.size() << std::endl;
+    }
+
     // Action of the bilinear form "a" on a function ui
     auto ui = std::make_shared<fem::Function<T, U>>(V);
-    auto M = std::make_shared<fem::Form<T, U>>(
-        fem::create_form<T>(*form_poisson_M, {V}, {{"ui", ui}}, {{}}, {}));
+
+    std::map<fem::IntegralType,
+             std::vector<std::pair<std::int32_t, std::vector<std::int32_t>>>>
+        subdomains;
+
+    subdomains[fem::IntegralType::cell] = {{-1, non_sharing_cells}};
+    auto Mi = std::make_shared<fem::Form<T, U>>(fem::create_form<T>(
+        *form_poisson_M, {V}, {{"ui", ui}}, {{}}, subdomains));
+
+    subdomains[fem::IntegralType::cell] = {{-1, deferred_cells}};
+    auto Md = std::make_shared<fem::Form<T, U>>(fem::create_form<T>(
+        *form_poisson_M, {V}, {{"ui", ui}}, {{}}, subdomains));
 
     // Define boundary condition
     auto u_D = std::make_shared<fem::Function<T, U>>(V);
@@ -167,23 +225,28 @@ int main(int argc, char* argv[])
     // Apply lifting to account for Dirichlet boundary condition
     // b <- b - A * x_bc
     fem::set_bc<T, U>(ui->x()->mutable_array(), {bc}, T(-1));
-    fem::assemble_vector(b.mutable_array(), *M);
+    fem::assemble_vector(b.mutable_array(), *Mi);
+    fem::assemble_vector(b.mutable_array(), *Md);
 
     // Communicate ghost values
     b.scatter_rev(std::plus<T>());
 
     // Set BC dofs to zero (effectively zeroes columns of A)
     fem::set_bc<T, U>(b.mutable_array(), {bc}, T(0));
-
     b.scatter_fwd();
 
     // Pack coefficients and constants
-    auto coeff = fem::allocate_coefficient_storage(*M);
-    const std::vector<T> constants = fem::pack_constants(*M);
+    auto coeff_i = fem::allocate_coefficient_storage(*Mi);
+    const std::vector<T> constants_i = fem::pack_constants(*Mi);
+
+    auto coeff_d = fem::allocate_coefficient_storage(*Md);
+    const std::vector<T> constants_d = fem::pack_constants(*Md);
 
     // Create function for computing the action of A on x (y = Ax)
-    auto action = [&M, &ui, &bc, &coeff, &constants](auto& x, auto& y)
+    auto action = [&](auto& x, auto& y)
     {
+      x.scatter_fwd_begin();
+
       // Zero y
       y.set(0.0);
 
@@ -191,19 +254,22 @@ int main(int argc, char* argv[])
       std::copy(x.array().begin(), x.array().end(),
                 ui->x()->mutable_array().begin());
 
-      // Compute action of A on x
-      fem::pack_coefficients(*M, coeff);
-      fem::assemble_vector(y.mutable_array(), *M, std::span<const T>(constants),
-                           fem::make_coefficients_span(coeff));
+      // Compute action of A on x on subset of cells "i" - local part
+      fem::pack_coefficients(*Mi, coeff_i);
+      fem::assemble_vector(y.mutable_array(), *Mi,
+                           std::span<const T>(constants_i),
+                           fem::make_coefficients_span(coeff_i));
+
+      x.scatter_fwd_end();
+
+      // Compute action of A on x on subset of cells "d" - cells with ghost values
+      // fem::pack_coefficients(*Md, coeff_d);
+      // fem::assemble_vector(y.mutable_array(), *Md,
+      //                      std::span<const T>(constants_d),
+      //                      fem::make_coefficients_span(coeff_d));
 
       // Set BC dofs to zero (effectively zeroes rows of A)
       fem::set_bc<T, U>(y.mutable_array(), {bc}, T(0));
-
-      // Accumulate ghost values
-      y.scatter_rev(std::plus<T>());
-
-      // Update ghost values
-      y.scatter_fwd();
     };
 
     // Compute solution using the conjugate gradient method

@@ -33,6 +33,10 @@
 #include <utility>
 #include <vector>
 
+namespace stdex = std::experimental;
+using mdspan2_t
+    = stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>>;
+
 /// @file utils.h
 /// @brief Functions supporting finite element method operations
 
@@ -387,12 +391,22 @@ Form<T, U> create_form(
       // Build list of entities to assembler over
       if (id == -1)
       {
-        // Default kernel, operates on all (owned) cells
-        assert(topology->index_map(tdim));
-        std::vector<std::int32_t> e;
-        e.resize(topology->index_map(tdim)->size_local(), 0);
-        std::iota(e.begin(), e.end(), 0);
-        itg.first->second.emplace_back(id, k, std::move(e));
+        auto it = std::lower_bound(sd->second.begin(), sd->second.end(), id,
+                                   [](auto& pair, auto val)
+                                   { return pair.first < val; });
+        if (it != sd->second.end() and it->first == id)
+        {
+          itg.first->second.emplace_back(id, k, it->second);
+        }
+        else
+        {
+          // Default kernel, operates on all (owned) cells
+          assert(topology->index_map(tdim));
+          std::vector<std::int32_t> e;
+          e.resize(topology->index_map(tdim)->size_local(), 0);
+          std::iota(e.begin(), e.end(), 0);
+          itg.first->second.emplace_back(id, k, std::move(e));
+        }
       }
       else if (sd != subdomains.end())
       {
@@ -814,13 +828,12 @@ void pack(std::span<T> coeffs, std::int32_t cell, int bs, std::span<const T> v,
 /// @private
 /// @brief  Concepts for function that returns cell index
 template <typename F>
-concept FetchCells
-    = requires(F&& f, std::span<const std::int32_t> v) {
-        requires std::invocable<F, std::span<const std::int32_t>>;
-        {
-          f(v)
-          } -> std::convertible_to<std::int32_t>;
-      };
+concept FetchCells = requires(F&& f, std::span<const std::int32_t> v) {
+  requires std::invocable<F, std::span<const std::int32_t>>;
+  {
+    f(v)
+  } -> std::convertible_to<std::int32_t>;
+};
 
 /// @brief Pack a single coefficient for a set of active entities.
 ///
@@ -1210,6 +1223,44 @@ std::vector<typename U::scalar_type> pack_constants(const U& u)
   }
 
   return constant_values;
+}
+
+/// @brief Finds cells in a mesh that contain at least one degree of freedom
+/// shared with another process.
+///
+/// This function returns a list of local cell indices that have at least one
+/// degree of freedom that belongs to another process (i.e., ghost dofs).
+///
+/// @param[in] V FunctionSpace object.
+/// @returns A vector of cell indices that have at least one degree of freedom
+/// that belongs to another process.
+template <std::floating_point T>
+std::vector<std::int32_t>
+locate_cells_with_ghost_dofs(const FunctionSpace<T>& V)
+{
+  std::shared_ptr<const fem::DofMap> dofmap = V.dofmap();
+  assert(dofmap);
+  std::shared_ptr<const dolfinx::common::IndexMap> index_map
+      = dofmap->index_map;
+  assert(index_map);
+  std::int32_t size_local = index_map->size_local();
+
+  mdspan2_t dofmap_array = dofmap->map();
+  std::vector<std::int32_t> cells_with_ghost_dofs;
+  for (std::size_t c = 0; c < dofmap_array.extent(0); c++)
+  {
+    bool has_ghost_dof = false;
+    for (std::size_t dof = 0; dof < dofmap_array.extent(1); dof++)
+    {
+      has_ghost_dof = has_ghost_dof || dofmap_array(c, dof) >= size_local;
+      if (has_ghost_dof)
+        break;
+    }
+    if (has_ghost_dof)
+      cells_with_ghost_dofs.push_back(c);
+  }
+
+  return cells_with_ghost_dofs;
 }
 
 } // namespace dolfinx::fem

@@ -33,10 +33,6 @@
 #include <utility>
 #include <vector>
 
-namespace stdex = std::experimental;
-using mdspan2_t
-    = stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>>;
-
 /// @file utils.h
 /// @brief Functions supporting finite element method operations
 
@@ -1245,7 +1241,7 @@ locate_cells_with_ghost_dofs(const FunctionSpace<T>& V)
   assert(index_map);
   std::int32_t size_local = index_map->size_local();
 
-  mdspan2_t dofmap_array = dofmap->map();
+  const auto dofmap_array = dofmap->map();
   std::vector<std::int32_t> cells_with_ghost_dofs;
 
   auto has_ghost_dof = [&](int cell)

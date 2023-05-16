@@ -1247,16 +1247,20 @@ locate_cells_with_ghost_dofs(const FunctionSpace<T>& V)
 
   mdspan2_t dofmap_array = dofmap->map();
   std::vector<std::int32_t> cells_with_ghost_dofs;
-  for (std::size_t c = 0; c < dofmap_array.extent(0); c++)
+
+  auto has_ghost_dof = [&](int cell)
   {
-    bool has_ghost_dof = false;
     for (std::size_t dof = 0; dof < dofmap_array.extent(1); dof++)
     {
-      has_ghost_dof = has_ghost_dof || dofmap_array(c, dof) >= size_local;
-      if (has_ghost_dof)
-        break;
+      if (dofmap_array(cell, dof) >= size_local)
+        return true;
     }
-    if (has_ghost_dof)
+    return false;
+  };
+
+  for (std::size_t c = 0; c < dofmap_array.extent(0); c++)
+  {
+    if (has_ghost_dof(c))
       cells_with_ghost_dofs.push_back(c);
   }
 

@@ -154,23 +154,18 @@ void declare_objects(py::module& m, const std::string& type)
              const py::array_t<T, py::array::c_style>& f,
              const py::array_t<std::int32_t, py::array::c_style>& cells)
           {
-            if (f.ndim() == 1)
-            {
-              std::array<std::size_t, 2> fshape
-                  = {1, static_cast<std::size_t>(f.shape(0))};
-              dolfinx::fem::interpolate(self, std::span(f.data(), f.size()),
-                                        fshape,
-                                        std::span(cells.data(), cells.size()));
-            }
-            else
-            {
-              std::array<std::size_t, 2> fshape
-                  = {static_cast<std::size_t>(f.shape(0)),
-                     static_cast<std::size_t>(f.shape(1))};
-              dolfinx::fem::interpolate(self, std::span(f.data(), f.size()),
-                                        fshape,
-                                        std::span(cells.data(), cells.size()));
-            }
+            assert(self.function_space());
+            auto element = self.function_space()->element();
+            const int gdim = self.function_space()->mesh()->geometry().dim();
+            assert(element);
+            const int vs = element->value_size();
+            const int nd = element->interpolation_nderivs_dim(gdim);
+
+            // TODO@ make this data three dimensional
+            std::array<std::size_t, 2> fshape
+                = {static_cast<std::size_t>(vs * nd), static_cast<std::size_t>(f.size() / (vs * nd))};
+            dolfinx::fem::interpolate(self, std::span(f.data(), f.size()),
+                                      fshape, std::span(cells.data(), cells.size()));
           },
           py::arg("f"), py::arg("cells"), "Interpolate an expression function")
       .def(

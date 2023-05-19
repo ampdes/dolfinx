@@ -102,6 +102,12 @@ public:
   /// `value_shape`.
   std::span<const std::size_t> value_shape() const noexcept;
 
+  /// Number of derivatives required when interpolating
+  int interpolation_nderivs() const;
+
+  /// Dimension of derivarive array
+  int interpolation_nderivs_dim(const int gdim) const;
+
   /// The finite element family
   /// @return The string of the finite element family
   std::string family() const noexcept;

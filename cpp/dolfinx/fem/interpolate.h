@@ -733,9 +733,6 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
                              "Interpolate into subspaces.");
   }
 
-  if (fshape[0] != (std::size_t)element->value_size())
-    throw std::runtime_error("Interpolation data has the wrong shape/size.");
-
   // Get mesh
   assert(u.function_space());
   auto mesh = u.function_space()->mesh();
@@ -743,6 +740,17 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
 
   const int gdim = mesh->geometry().dim();
   const int tdim = mesh->topology()->dim();
+
+  const int derivsize = element->interpolation_nderivs_dim(gdim);
+  if (fshape[0] != (std::size_t)element->value_size()){
+    std::cout << fshape[0] << "," << fshape[1] << " " << element->value_size() << "\n";
+    std::cout << fshape[0] << "," << fshape[1] << " " << element->value_size() * derivsize << "\n";
+    std::cout << gdim << " " << derivsize << "\n";
+    std::cout << element->interpolation_nderivs() << "\n";
+  }
+  if (fshape[0] != (std::size_t)(element->value_size() * derivsize))
+    throw std::runtime_error("Interpolation data has the wrong shape/size.");
+
 
   std::span<const std::uint32_t> cell_info;
   if (element->needs_dof_transformations())
@@ -771,7 +779,9 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
   if (element->map_ident() && element->interpolation_ident())
   {
     // Point evaluation element *and* the geometric map is the identity,
-    // e.g. not Piola mapped
+    // ie not Piola mapped
+
+    std::cout << "r!!!!!!\n";
 
     auto apply_inv_transpose_dof_transformation
         = element->template get_dof_transformation_function<T>(true, true,
@@ -793,6 +803,11 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
         {
           const int dof = i * element_bs + k;
           std::div_t pos = std::div(dof, dofmap_bs);
+
+          // This needs replacing by multiplication by jacobian
+          if (element->interpolation_nderivs() == 1) {
+            _coeffs[i] *= (i%2 == 1 ? 0.2 : 1.0);
+          }
           coeffs[dofmap_bs * dofs[pos.quot] + pos.rem] = _coeffs[i];
         }
       }
@@ -801,7 +816,7 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
   else if (element->map_ident())
   {
     // Not a point evaluation, but the geometric map is the identity,
-    // e.g. not Piola mapped
+    // ie not Piola mapped
 
     const int element_vs = element->value_size() / element_bs;
 

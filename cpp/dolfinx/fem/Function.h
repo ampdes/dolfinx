@@ -158,6 +158,7 @@ public:
           nmm_interpolation_data
       = {})
   {
+    std::cout << "A!\n";
     fem::interpolate(*this, v, cells, nmm_interpolation_data);
   }
 
@@ -181,6 +182,7 @@ public:
     std::int32_t num_cells = cell_map->size_local() + cell_map->num_ghosts();
     std::vector<std::int32_t> cells(num_cells, 0);
     std::iota(cells.begin(), cells.end(), 0);
+    std::cout << "B!\n";
     interpolate(v, cells, nmm_interpolation_data);
   }
 
@@ -240,6 +242,7 @@ public:
     else
       _fshape = {fshape[0], fshape[1]};
 
+    std::cout << "C!\n";
     fem::interpolate(*this, std::span<const T>(fx.data(), fx.size()), _fshape,
                      cells);
   }
@@ -261,6 +264,7 @@ public:
     std::int32_t num_cells = cell_map->size_local() + cell_map->num_ghosts();
     std::vector<std::int32_t> cells(num_cells, 0);
     std::iota(cells.begin(), cells.end(), 0);
+    std::cout << "D!\n";
     interpolate(f, cells);
   }
 
@@ -273,6 +277,7 @@ public:
   void interpolate(const Expression<T, U>& e,
                    std::span<const std::int32_t> cells)
   {
+    std::cout << "!!!\n";
     // Check that spaces are compatible
     assert(_function_space);
     assert(_function_space->element());
@@ -332,6 +337,7 @@ public:
           f1(k, i, j) = f(i, j, k);
 
     // Interpolate values into appropriate space
+    std::cout << "E!\n";
     fem::interpolate(*this, std::span<const T>(fdata1.data(), fdata1.size()),
                      {value_size, num_cells * num_points}, cells);
   }
@@ -348,6 +354,7 @@ public:
     std::int32_t num_cells = cell_map->size_local() + cell_map->num_ghosts();
     std::vector<std::int32_t> cells(num_cells, 0);
     std::iota(cells.begin(), cells.end(), 0);
+    std::cout << "F!\n";
     interpolate(e, cells);
   }
 

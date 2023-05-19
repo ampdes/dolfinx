@@ -346,6 +346,29 @@ int FiniteElement<T>::value_size() const
 }
 //-----------------------------------------------------------------------------
 template <std::floating_point T>
+int FiniteElement<T>::interpolation_nderivs() const
+{
+  assert(_element);
+  return _element->interpolation_nderivs();
+}
+//-----------------------------------------------------------------------------
+template <std::floating_point T>
+int FiniteElement<T>::interpolation_nderivs_dim(const int gdim) const
+{
+  const int nd = interpolation_nderivs();
+  if (gdim == 0)
+    return 1;
+  else if (gdim == 1)
+    return nd + 1;
+  else if (gdim == 2)
+    return(nd + 1) * (nd + 2) / 2;
+  else if (gdim == 3)
+    return (nd + 1) * (nd + 2) * (nd + 3) / 6;
+  throw std::runtime_error("Unsupported gdim");
+}
+
+//-----------------------------------------------------------------------------
+template <std::floating_point T>
 int FiniteElement<T>::reference_value_size() const
 {
   return std::accumulate(_value_shape.begin(), _value_shape.end(), 1,

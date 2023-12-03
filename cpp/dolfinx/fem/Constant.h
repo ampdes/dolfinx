@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "dolfinx/common/types.h"
+#include <dolfinx/common/types.h>
 #include <span>
 #include <vector>
 
@@ -31,18 +31,26 @@ public:
 
   /// @brief Create a rank-1 (vector-valued) constant
   /// @param[in] c Value of the constant
-  explicit Constant(std::span<const value_type> c)
-      : Constant(c, std::vector<std::size_t>{c.size()})
+  template <typename Values>
+    requires(dolfinx::scalar<typename Values::value_type>)
+  explicit Constant(Values c) : Constant(c, {c.size()})
   {
   }
 
   /// @brief Create a rank-d constant
   /// @param[in] c Value of the Constant (row-majors storage)
   /// @param[in] shape Shape of the Constant
-  Constant(std::span<const value_type> c, std::span<const std::size_t> shape)
+  template <typename Values, typename Shape>
+    requires(dolfinx::scalar<typename Values::value_type>
+             and std::unsigned_integral<typename Shape::value_type>)
+  Constant(Values c, Shape shape)
       : value(c.begin(), c.end()), shape(shape.begin(), shape.end())
   {
   }
+  // Constant(std::span<const value_type> c, std::span<const std::size_t> shape)
+  //     : value(c.begin(), c.end()), shape(shape.begin(), shape.end())
+  // {
+  // }
 
   /// Values, stored as a row-major flattened array
   std::vector<value_type> value;

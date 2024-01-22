@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import basix
+import dolfinx.fem
 import ufl
 from basix.ufl import element, mixed_element
 from dolfinx import default_real_type
@@ -21,6 +22,7 @@ from dolfinx.fem import (Function, assemble_scalar, dirichletbc, form,
 from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector,
                                set_bc)
 from dolfinx.io import XDMFFile
+from dolfinx.la import InsertMode
 from dolfinx.mesh import (CellType, create_rectangle, create_unit_cube,
                           create_unit_square, exterior_facet_indices,
                           locate_entities_boundary)
@@ -273,7 +275,7 @@ def test_curl_curl_eigenvalue(family, order):
 @pytest.mark.skipif(np.issubdtype(PETSc.ScalarType, np.complexfloating),  # type: ignore
                     reason="This test does not work in complex mode.")
 @pytest.mark.parametrize("family", ["HHJ", "Regge"])
-def test_biharmonic(family):
+def test_biharmonic(family, bicgstab_solver):
     """Manufactured biharmonic problem.
 
     Solved using rotated Regge or the Hellan-Herrmann-Johnson (HHJ) mixed
@@ -341,6 +343,17 @@ def test_biharmonic(family):
     apply_lifting(b, [a], bcs=[bcs])
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b, bcs)
+
+    # Repeat using dolfinx MatrixCSR
+    Ad = dolfinx.fem.assemble_matrix(a, bcs=bcs)
+    Ad.scatter_reverse()
+    bd = dolfinx.fem.assemble_vector(L)
+    dolfinx.fem.apply_lifting(b.array, [a], bcs=[bcs])
+    bd.scatter_reverse(InsertMode.add)
+    dolfinx.fem.set_bc(b.array, bcs)
+
+    u = Function(V)
+    bicgstab_solver(mesh.comm, Ad, bd, u.x, maxit=200)
 
     # Solve
     solver = PETSc.KSP().create(MPI.COMM_WORLD)

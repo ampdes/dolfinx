@@ -3,12 +3,13 @@ import os
 import shutil
 import time
 from collections import defaultdict
-from dolfinx.la import vector as dolfinx_vector
-import numpy as np
 
 from mpi4py import MPI
 
+import numpy as np
 import pytest
+
+from dolfinx.la import vector as dolfinx_vector
 
 
 def pytest_runtest_teardown(item):
@@ -190,3 +191,63 @@ def cg_solver():
         raise RuntimeError(f"Solver exceeded max iterations ({maxit}).")
 
     return _cg
+
+
+@pytest.fixture(scope="function")
+def bicgstab_solver():
+    """Unpreconditioned BiCGStab solver,
+       which can work in serial or parallel for testing use.
+       Not suitable for large problems."""
+
+    # BiCGStab
+    def _bicgstab(comm, A, b, x, maxit=500, rtol=None):
+        rtol2 = 10 * np.finfo(x.array.dtype).eps if rtol is None else rtol**2
+
+        def _global_dot(comm, v0, v1):
+            return comm.allreduce(np.vdot(v0, v1), MPI.SUM)
+
+        A_op = A.to_scipy()
+        nr = A_op.shape[0]
+        assert nr == A.index_map(0).size_local
+
+        # Create larger ghosted vector based on matrix column space
+        # and get initial y = A.x
+        p = dolfinx_vector(A.index_map(1), dtype=x.array.dtype)
+        s = dolfinx_vector(A.index_map(1), dtype=x.array.dtype)
+        p.array[:nr] = x.array[:nr]
+        p.scatter_forward()
+        y = A_op @ p.array
+
+        # Copy residual to p
+        r = b.array[:nr] - y
+        rz = r.copy()
+        p.array[:nr] = r
+
+        # Iterations of BiCGStab
+        rho0 = _global_dot(comm, rz, r)
+        rho = rho0
+        k = 0
+        while k < maxit:
+            k += 1
+            p.scatter_forward()
+            y = A_op @ p.array
+            alpha = rho / _global_dot(comm, rz, y)
+            s.array[:nr] = r - alpha * y
+            snorm = _global_dot(comm, s.array[:nr], s.array[:nr])
+            print(f"k={k}, rho={rho}, snorm={snorm}")
+            if snorm < rtol2:
+                x.scatter_forward()
+                return
+            s.scatter_forward()
+            t = A_op @ s.array
+            omega = _global_dot(comm, t, s.array) / _global_dot(comm, t, t)
+            r = s.array[:nr] - omega * t
+            x.array[:nr] += alpha * p.array[:nr] + omega * s.array[:nr]
+            rho_new = _global_dot(comm, rz, r)
+            beta = rho_new / rho * (alpha / omega)
+            rho = rho_new
+            p.array[:nr] = r + beta * (p.array[:nr] - omega * y)
+
+        raise RuntimeError(f"Solver exceeded max iterations ({maxit}).")
+
+    return _bicgstab

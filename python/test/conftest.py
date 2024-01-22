@@ -236,6 +236,7 @@ def bicgstab_solver():
             snorm = _global_dot(comm, s.array[:nr], s.array[:nr])
             print(f"k={k}, rho={rho}, snorm={snorm}")
             if snorm < rtol2:
+                x.array[:nr] += alpha * p.array[:nr]
                 x.scatter_forward()
                 return
             s.scatter_forward()

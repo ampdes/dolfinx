@@ -57,19 +57,7 @@ io.write_mesh(adios2, tag, msh)
 adios2.close(tag)
 # -
 
-# # +
-# adios2_read = io.ADIOS2(msh.comm)
-# tag = "mesh-read"
-# adios2_read.add_io(filename="mesh.bp", tag=tag, engine_type="BP5", mode="read")
-# # -
-
-# # +
-# msh_read = io.read_mesh(adios2_read, tag, msh.comm)
-# adios2_read.close(tag)
-# # -
-
 # +
-# adios2_read = io.ADIOS2(msh.comm)
 tag = "mesh-read"
 adios2.add_io(filename="mesh.bp", tag=tag, engine_type="BP5", mode="read")
 # -

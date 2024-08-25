@@ -38,8 +38,16 @@ int main(int argc, char* argv[])
     adios2::IO io = adios.DeclareIO("mesh-write");
     io.SetEngine("BP5");
     adios2::Engine engine = io.Open("mesh.bp", adios2::Mode::Append);
-
+    std::cout << "Current step : " << engine.CurrentStep() << "\n";
+    if (engine.CurrentStep() == 0)
+    {
+      std::cout << "write topology as well\n";
+    }
     io::native::write_mesh(io, engine, *mesh);
+    if (engine.CurrentStep())
+    {
+      std::cout << "write only geometry\n";
+    }
 
     engine.Close();
   }
